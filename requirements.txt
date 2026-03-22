@@ -1,0 +1,10 @@
+# Phase 1: No external dependencies (pure Python)
+
+# Phase 2: Live semantic pipeline
+anthropic>=0.40.0
+Pillow>=10.0.0
+
+# Phase 3 (planned): Live deterministic pipeline
+# opencv-python>=4.6.0
+# colormath>=3.0.0
+# ultralytics>=8.0.0  # YOLO
