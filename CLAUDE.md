@@ -2,6 +2,9 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## System Instructions
+Before executing any task, you MUST read and strictly adhere to the constraints defined in `specs/agent-rules.md`.
+
 ## Project Overview
 
 Brand Arbiter is an automated brand compliance engine that splits evaluation into two parallel tracks — deterministic computer vision (Track A) and semantic AI judgment (Track B) — then arbitrates where they overlap. The core safety property: semantic uncertainty is never silently converted to deterministic confidence.
@@ -87,3 +90,5 @@ These are architectural invariants, not guidelines:
 | Phase 2: Live semantic pipeline (Claude Vision) | Built, needs API key |
 | Phase 3: Live deterministic pipeline (YOLO + OpenCV) | Not started |
 | Phase 4: Integration + real asset testing | Not started |
+
+**Remember: Always validate your code locally and follow specs/agent-rules.md before auto-committing.**
