@@ -211,55 +211,54 @@ def call_live_track_b(
 # ============================================================================
 
 MOCK_TRACK_A_SCENARIOS = {
+    # area_ratio = 14000/20400 ≈ 0.686 → FAIL (short-circuit)
     "clear_violation": TrackAOutput(
         rule_id="MC-PAR-001",
         entities=[
-            DetectedEntity(label="mastercard", bbox=[640, 380, 720, 460]),
-            DetectedEntity(label="visa", bbox=[250, 40, 550, 180]),
+            DetectedEntity(label="mastercard", bbox=[400, 300, 540, 400]),  # 140×100 = 14000
+            DetectedEntity(label="visa", bbox=[100, 50, 270, 170]),         # 170×120 = 20400
         ],
-        area_ratio=0.38,  # MC is much smaller
     ),
+    # area_ratio = 19400/20000 = 0.97 → PASS (Track B disagrees → ESCALATED)
     "hard_case": TrackAOutput(
         rule_id="MC-PAR-001",
         entities=[
-            DetectedEntity(label="mastercard", bbox=[640, 400, 740, 490]),
-            DetectedEntity(label="visa", bbox=[300, 30, 500, 130]),
+            DetectedEntity(label="mastercard", bbox=[400, 280, 594, 380]),  # 194×100 = 19400
+            DetectedEntity(label="visa", bbox=[100, 50, 300, 150]),         # 200×100 = 20000
         ],
-        area_ratio=0.97,  # Nearly equal area — passes 0.95 threshold
     ),
+    # area_ratio = 20000/20000 = 1.0 → PASS
     "compliant": TrackAOutput(
         rule_id="MC-PAR-001",
         entities=[
-            DetectedEntity(label="mastercard", bbox=[450, 380, 570, 460]),
-            DetectedEntity(label="visa", bbox=[200, 380, 350, 450]),
+            DetectedEntity(label="mastercard", bbox=[100, 50, 300, 150]),   # 200×100 = 20000
+            DetectedEntity(label="visa", bbox=[350, 50, 550, 150]),         # 200×100 = 20000
         ],
-        area_ratio=1.01,  # Essentially equal
     ),
+    # 2 entities (YOLO misses Amex) — entity mismatch when Track B sees 3
     "three_logos": TrackAOutput(
         rule_id="MC-PAR-001",
         entities=[
-            DetectedEntity(label="mastercard", bbox=[310, 380, 390, 445]),
-            DetectedEntity(label="visa", bbox=[100, 380, 230, 440]),
-            # Note: YOLO might miss the small Amex — entity mismatch test
-        ],
-        area_ratio=0.94,  # MC slightly smaller than Visa
+            DetectedEntity(label="mastercard", bbox=[100, 380, 194, 480]),  # 94×100 = 9400
+            DetectedEntity(label="visa", bbox=[250, 380, 350, 480]),        # 100×100 = 10000
+        ],  # area_ratio = 9400/10000 = 0.94
     ),
+    # 3 entities — all detected
     "three_logos_full": TrackAOutput(
         rule_id="MC-PAR-001",
         entities=[
-            DetectedEntity(label="mastercard", bbox=[310, 380, 390, 445]),
-            DetectedEntity(label="visa", bbox=[100, 380, 230, 440]),
-            DetectedEntity(label="amex", bbox=[480, 395, 560, 430]),
-        ],
-        area_ratio=0.94,
+            DetectedEntity(label="mastercard", bbox=[100, 380, 194, 480]),  # 94×100 = 9400
+            DetectedEntity(label="visa", bbox=[250, 380, 350, 480]),        # 100×100 = 10000
+            DetectedEntity(label="amex", bbox=[400, 395, 480, 435]),        # 80×40  = 3200
+        ],  # area_ratio = 9400/10000 = 0.94
     ),
+    # area_ratio = 5200/10000 = 0.52 → FAIL
     "low_res": TrackAOutput(
         rule_id="MC-PAR-001",
         entities=[
-            DetectedEntity(label="mastercard", bbox=[280, 30, 350, 70]),
-            DetectedEntity(label="visa", bbox=[50, 20, 180, 80]),
+            DetectedEntity(label="mastercard", bbox=[50, 20, 102, 120]),    # 52×100 = 5200
+            DetectedEntity(label="visa", bbox=[200, 20, 300, 120]),         # 100×100 = 10000
         ],
-        area_ratio=0.52,
     ),
 }
 

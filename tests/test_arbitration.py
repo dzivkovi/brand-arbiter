@@ -39,10 +39,26 @@ def make_entities(*labels):
 
 
 def make_track_a(area_ratio, labels=("mastercard", "visa")):
+    """Build TrackAOutput with bboxes that produce the given area_ratio.
+
+    Competitor gets a fixed 10000px² bbox. Mastercard bbox is sized so
+    mc_area / competitor_area == area_ratio. Labels are matched by name,
+    not position, consistent with TrackAOutput.__post_init__.
+    """
+    competitor_bbox = [0, 0, 10000, 1]  # area = 10000
+    mc_width = round(area_ratio * 10000)
+    mc_bbox = [20000, 0, 20000 + mc_width, 1]  # area = mc_width
+
+    entities = []
+    for label in labels:
+        if label.lower() == "mastercard":
+            entities.append(DetectedEntity(label=label, bbox=mc_bbox))
+        else:
+            entities.append(DetectedEntity(label=label, bbox=competitor_bbox))
+
     return TrackAOutput(
         rule_id="MC-PAR-001",
-        entities=make_entities(*labels),
-        area_ratio=area_ratio,
+        entities=entities,
     )
 
 
@@ -85,7 +101,6 @@ class TestEntityReconciliation:
         a = TrackAOutput(
             rule_id="MC-PAR-001",
             entities=[DetectedEntity(label="Mastercard", bbox=[0, 0, 80, 80])],
-            area_ratio=1.0,
         )
         b = TrackBOutput(
             rule_id="MC-PAR-001",

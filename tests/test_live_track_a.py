@@ -116,7 +116,7 @@ class TestEdgeCases:
 
     def test_no_entities(self):
         result = evaluate_track_a([])
-        assert result.result is None
+        assert result.result == Result.FAIL
         assert result.area_ratio is None
 
     def test_no_mastercard(self):
@@ -124,14 +124,14 @@ class TestEdgeCases:
             DetectedEntity(label="visa", bbox=[0, 0, 100, 100]),
         ]
         result = evaluate_track_a(entities)
-        assert result.result is None
+        assert result.result == Result.FAIL
 
     def test_no_competitors(self):
         entities = [
             DetectedEntity(label="mastercard", bbox=[0, 0, 100, 100]),
         ]
         result = evaluate_track_a(entities)
-        assert result.result is None
+        assert result.result == Result.FAIL
 
     def test_zero_area_competitor(self):
         entities = [
@@ -139,7 +139,7 @@ class TestEdgeCases:
             DetectedEntity(label="visa", bbox=[200, 0, 200, 100]),  # zero width
         ]
         result = evaluate_track_a(entities)
-        assert result.result is None
+        assert result.result == Result.FAIL
 
     def test_case_insensitive_labels(self):
         """Label matching must be case-insensitive."""

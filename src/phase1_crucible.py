@@ -57,9 +57,20 @@ class TrackAOutput:
     """Deterministic pipeline output — measurements, no confidence scores."""
     rule_id: str
     entities: list[DetectedEntity]
-    area_ratio: Optional[float] = None  # mc_area / largest_competitor_area
     result: Optional[Result] = None
     evidence: str = ""
+    area_ratio: Optional[float] = field(default=None, init=False)
+
+    def __post_init__(self):
+        """Compute area_ratio from entities — single source of truth."""
+        if self.entities:
+            mc = [e for e in self.entities if e.label.lower() == "mastercard"]
+            competitors = [e for e in self.entities if e.label.lower() != "mastercard"]
+            if mc and competitors:
+                mc_area = max(e.area for e in mc)
+                comp_area = max(e.area for e in competitors)
+                if comp_area > 0:
+                    self.area_ratio = mc_area / comp_area
 
 
 @dataclass
@@ -377,14 +388,13 @@ def _serialize_track_b(t: TrackBOutput) -> dict:
 # ============================================================================
 
 def mock_track_a_clear_fail() -> TrackAOutput:
-    """MC logo at 90% of Visa area — should FAIL deterministic check."""
+    """MC logo at 69% of Visa area — should FAIL deterministic check."""
     return TrackAOutput(
         rule_id="MC-PAR-001",
         entities=[
             DetectedEntity(label="mastercard", bbox=[400, 300, 540, 400]),  # 140×100 = 14000
             DetectedEntity(label="visa", bbox=[100, 50, 270, 170]),         # 170×120 = 20400
-        ],
-        area_ratio=0.686,  # 14000/20400 — well below 0.95
+        ],  # area_ratio = 14000/20400 ≈ 0.686 — computed by __post_init__
     )
 
 
@@ -407,14 +417,13 @@ def mock_track_b_clear_fail() -> TrackBOutput:
 
 
 def mock_track_a_borderline_pass() -> TrackAOutput:
-    """MC logo at 97% of Visa area — passes the 0.95 threshold."""
+    """MC logo at ~97% of Visa area — passes the 0.95 threshold."""
     return TrackAOutput(
         rule_id="MC-PAR-001",
         entities=[
-            DetectedEntity(label="mastercard", bbox=[400, 280, 560, 400]),  # 160×120 = 19200
+            DetectedEntity(label="mastercard", bbox=[400, 280, 598, 380]),  # 198×100 = 19800
             DetectedEntity(label="visa", bbox=[100, 50, 270, 170]),         # 170×120 = 20400
-        ],
-        area_ratio=0.97,  # passes 0.95 threshold
+        ],  # area_ratio = 19800/20400 ≈ 0.971 — computed by __post_init__
     )
 
 
@@ -483,10 +492,9 @@ def mock_track_a_both_pass() -> TrackAOutput:
     return TrackAOutput(
         rule_id="MC-PAR-001",
         entities=[
-            DetectedEntity(label="mastercard", bbox=[100, 50, 270, 170]),
-            DetectedEntity(label="visa", bbox=[350, 50, 520, 170]),
-        ],
-        area_ratio=1.0,
+            DetectedEntity(label="mastercard", bbox=[100, 50, 270, 170]),  # 170×120 = 20400
+            DetectedEntity(label="visa", bbox=[350, 50, 520, 170]),        # 170×120 = 20400
+        ],  # area_ratio = 20400/20400 = 1.0 — computed by __post_init__
     )
 
 

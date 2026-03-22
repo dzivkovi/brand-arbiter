@@ -8,11 +8,9 @@ For now, they are provided as input (from mock data or manual annotation).
 
 The only job of this module:
   1. Accept a list of detected payment logo bounding boxes
-  2. Compute pixel area for each: (x2 - x1) * (y2 - y1)
-  3. Find the Mastercard logo and the largest competitor logo
-  4. Compute area_ratio = mc_area / largest_competitor_area
-  5. Return PASS if area_ratio >= 0.95, FAIL if < 0.95
-  6. Output as TrackAOutput (same type the Arbitrator already consumes)
+  2. Construct a TrackAOutput (__post_init__ computes area_ratio from geometry)
+  3. Evaluate PASS if area_ratio >= 0.95, FAIL if < 0.95 or data is missing
+  4. Return a fully populated TrackAOutput ready for the Arbitrator
 
 Author: Daniel Zivkovic, Magma Inc.
 Date: March 22, 2026
@@ -39,82 +37,54 @@ def evaluate_track_a(
     """
     Deterministic parity evaluation from bounding boxes.
 
-    Finds the Mastercard entity and the largest non-Mastercard entity,
-    computes their area ratio, and returns PASS/FAIL against the
-    named threshold (PARITY_AREA_THRESHOLD = 0.95).
+    Constructs a TrackAOutput (whose __post_init__ computes area_ratio
+    from entity geometry), then evaluates PASS/FAIL against the named
+    threshold PARITY_AREA_THRESHOLD (0.95).
 
-    Returns a fully populated TrackAOutput ready for the Arbitrator.
+    Missing data (no entities, no Mastercard, no competitors, zero-area)
+    is a strict FAIL — missing the primary brand logo is a mathematical
+    failure, not an ambiguity.
     """
-    if not entities:
-        return TrackAOutput(
-            rule_id=rule_id,
-            entities=entities,
-            area_ratio=None,
-            result=None,
-            evidence="No entities provided — cannot evaluate parity",
-        )
-
-    # Ensure areas are computed
+    # Ensure areas are computed before constructing TrackAOutput
     for e in entities:
         if e.area is None:
             e.area = compute_area(e.bbox)
 
-    # Find Mastercard entity
-    mc_entities = [e for e in entities if e.label.lower() == "mastercard"]
-    competitors = [e for e in entities if e.label.lower() != "mastercard"]
+    # Construct — __post_init__ computes area_ratio from entities
+    output = TrackAOutput(rule_id=rule_id, entities=entities)
 
-    if not mc_entities:
-        return TrackAOutput(
-            rule_id=rule_id,
-            entities=entities,
-            area_ratio=None,
-            result=None,
-            evidence="No Mastercard entity detected — cannot evaluate parity",
-        )
-
-    if not competitors:
-        return TrackAOutput(
-            rule_id=rule_id,
-            entities=entities,
-            area_ratio=None,
-            result=None,
-            evidence="No competitor entities detected — cannot evaluate parity",
-        )
-
-    # Use the largest Mastercard logo and the largest competitor logo
-    mc_area = max(e.area for e in mc_entities)
-    competitor_area = max(e.area for e in competitors)
-
-    # Guard against zero-area competitors (degenerate bboxes)
-    if competitor_area == 0:
-        return TrackAOutput(
-            rule_id=rule_id,
-            entities=entities,
-            area_ratio=None,
-            result=None,
-            evidence="Competitor entity has zero area — degenerate bounding box",
-        )
-
-    area_ratio = mc_area / competitor_area
+    # If area_ratio could not be computed, it's a deterministic FAIL
+    if output.area_ratio is None:
+        output.result = Result.FAIL
+        # Diagnose why
+        mc = [e for e in entities if e.label.lower() == "mastercard"]
+        competitors = [e for e in entities if e.label.lower() != "mastercard"]
+        if not entities:
+            output.evidence = "No entities provided — cannot evaluate parity"
+        elif not mc:
+            output.evidence = "No Mastercard entity detected — cannot evaluate parity"
+        elif not competitors:
+            output.evidence = "No competitor entities detected — cannot evaluate parity"
+        else:
+            output.evidence = "Competitor entity has zero area — degenerate bounding box"
+        return output
 
     # Strict comparison against named threshold (Constraint 3)
-    if area_ratio >= PARITY_AREA_THRESHOLD:
-        result = Result.PASS
-        evidence = (
-            f"Area ratio {area_ratio:.4f} >= threshold {PARITY_AREA_THRESHOLD} | "
-            f"MC area: {mc_area}px², largest competitor area: {competitor_area}px²"
+    if output.area_ratio >= PARITY_AREA_THRESHOLD:
+        output.result = Result.PASS
+        mc_area = max(e.area for e in entities if e.label.lower() == "mastercard")
+        comp_area = max(e.area for e in entities if e.label.lower() != "mastercard")
+        output.evidence = (
+            f"Area ratio {output.area_ratio:.4f} >= threshold {PARITY_AREA_THRESHOLD} | "
+            f"MC area: {mc_area}px², largest competitor area: {comp_area}px²"
         )
     else:
-        result = Result.FAIL
-        evidence = (
-            f"Area ratio {area_ratio:.4f} < threshold {PARITY_AREA_THRESHOLD} | "
-            f"MC area: {mc_area}px², largest competitor area: {competitor_area}px²"
+        output.result = Result.FAIL
+        mc_area = max(e.area for e in entities if e.label.lower() == "mastercard")
+        comp_area = max(e.area for e in entities if e.label.lower() != "mastercard")
+        output.evidence = (
+            f"Area ratio {output.area_ratio:.4f} < threshold {PARITY_AREA_THRESHOLD} | "
+            f"MC area: {mc_area}px², largest competitor area: {comp_area}px²"
         )
 
-    return TrackAOutput(
-        rule_id=rule_id,
-        entities=entities,
-        area_ratio=area_ratio,
-        result=result,
-        evidence=evidence,
-    )
+    return output

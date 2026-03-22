@@ -27,7 +27,6 @@ from pathlib import Path
 
 from phase1_crucible import (
     AssessmentOutput,
-    DetectedEntity,
     LearningStore,
     RULE_CATALOG,
     arbitrate,
@@ -35,50 +34,11 @@ from phase1_crucible import (
 from live_track_a import evaluate_track_a
 from live_track_b import (
     call_live_track_b,
+    MOCK_TRACK_A_SCENARIOS,
     SCENARIO_IMAGES,
     SCENARIO_EXPECTED,
 )
 
-
-# ============================================================================
-# Mock bounding boxes (stand-in until YOLO is integrated in Phase 3)
-# ============================================================================
-# These mirror MOCK_TRACK_A_SCENARIOS from live_track_b.py but as raw entity
-# lists, so live_track_a.py can compute area_ratio from the geometry.
-
-SCENARIO_ENTITIES = {
-    # area_ratio = 14000/20400 ≈ 0.686 → well below 0.95 → FAIL
-    "clear_violation": [
-        DetectedEntity(label="mastercard", bbox=[400, 300, 540, 400]),  # 140×100 = 14000
-        DetectedEntity(label="visa", bbox=[100, 50, 270, 170]),         # 170×120 = 20400
-    ],
-    # area_ratio = 19400/20000 = 0.97 → above 0.95 → PASS (then Track B disagrees → ESCALATED)
-    "hard_case": [
-        DetectedEntity(label="mastercard", bbox=[400, 280, 594, 380]),  # 194×100 = 19400
-        DetectedEntity(label="visa", bbox=[100, 50, 300, 150]),         # 200×100 = 20000
-    ],
-    # area_ratio = 20000/20000 = 1.0 → PASS
-    "compliant": [
-        DetectedEntity(label="mastercard", bbox=[100, 50, 300, 150]),   # 200×100 = 20000
-        DetectedEntity(label="visa", bbox=[350, 50, 550, 150]),         # 200×100 = 20000
-    ],
-    # 2 entities (YOLO misses Amex) — entity mismatch expected when Track B sees 3
-    "three_logos": [
-        DetectedEntity(label="mastercard", bbox=[100, 380, 194, 480]),  # 94×100 = 9400
-        DetectedEntity(label="visa", bbox=[250, 380, 350, 480]),        # 100×100 = 10000
-    ],
-    # 3 entities — all detected
-    "three_logos_full": [
-        DetectedEntity(label="mastercard", bbox=[100, 380, 194, 480]),  # 94×100 = 9400
-        DetectedEntity(label="visa", bbox=[250, 380, 350, 480]),        # 100×100 = 10000
-        DetectedEntity(label="amex", bbox=[400, 395, 480, 435]),        # 80×40  = 3200
-    ],
-    # area_ratio = 5200/10000 = 0.52 → FAIL (also low-res triggers confidence penalty)
-    "low_res": [
-        DetectedEntity(label="mastercard", bbox=[50, 20, 102, 120]),    # 52×100 = 5200
-        DetectedEntity(label="visa", bbox=[200, 20, 300, 120]),         # 100×100 = 10000
-    ],
-}
 
 # Map image filenames back to scenario names (for --image lookups)
 IMAGE_TO_SCENARIO = {Path(v).name: k for k, v in SCENARIO_IMAGES.items()}
@@ -105,10 +65,11 @@ def mock_track_b_for_scenario(scenario: str):
         scenario, (False, 0.80, "Unknown scenario — default mock.")
     )
 
-    entities = SCENARIO_ENTITIES.get(scenario, [])
+    mock = MOCK_TRACK_A_SCENARIOS.get(scenario)
+    entities = list(mock.entities) if mock else []  # copy to avoid mutation
     return TrackBOutput(
         rule_id="MC-PAR-001",
-        entities=list(entities),  # copy to avoid mutation
+        entities=entities,
         visual_parity_assessment=parity,
         confidence_score=confidence,
         reasoning_trace=reasoning,
@@ -162,9 +123,10 @@ def run_pipeline(
     if store is None:
         store = LearningStore()
 
-    entities = SCENARIO_ENTITIES.get(scenario)
-    if entities is None:
-        raise ValueError(f"No bounding box data for scenario: {scenario}")
+    mock = MOCK_TRACK_A_SCENARIOS.get(scenario)
+    if mock is None:
+        raise ValueError(f"No mock data for scenario: {scenario}")
+    entities = mock.entities
 
     expected = SCENARIO_EXPECTED.get(scenario)
 
