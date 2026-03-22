@@ -88,9 +88,9 @@ The spec (v2.1) describes the Arbitrator execution order as: Gatekeeper fires be
 
 ADRs are too heavy for this project's current size. Instead: a spec version bump with inline changelog, plus a lightweight decisions log that compounds over time.
 
-### Change 5: Bump spec to v2.2 — `specs/brand-compliance-confidence-sketch-v2.1.md`
+### Change 5: Bump spec to v2.2 — `specs/brand-compliance-confidence-sketch.md`
 
-Rename file to `specs/brand-compliance-confidence-sketch-v2.2.md`.
+Rename file to `specs/brand-compliance-confidence-sketch.md`.
 
 Update the header (line 5):
 ```
@@ -184,7 +184,7 @@ integration patterns) get appended with incrementing IDs.
 | 3 | `tests/test_arbitration.py` | 30 unit tests covering all branches | Done |
 | 4 | `tests/conftest.py` | sys.path setup for src/ imports | Done |
 | 5 | `CLAUDE.md` | Updated execution order + unit test command | Done |
-| 6 | `specs/brand-compliance-confidence-sketch-v2.2.md` | Spec bump with changelog + Block 1 rewrite | **Pending** |
+| 6 | `specs/brand-compliance-confidence-sketch.md` | Spec bump with changelog + Block 1 rewrite | **Pending** |
 | 7 | `docs/decisions.md` | DEC-001 (short-circuit) + DEC-002 (prompt polarity) | **Pending** |
 
 ## Verification

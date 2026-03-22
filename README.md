@@ -80,7 +80,7 @@ python live_track_b.py --scenario all            # run all 5 scenarios
 ```
 brand-arbiter/
   specs/
-    brand-compliance-confidence-sketch-v2.1.md    # Full architectural specification
+    brand-compliance-confidence-sketch.md    # Full architectural specification
   src/
     phase1_crucible.py           # Proven arbitration engine (mocked tracks)
     live_track_b.py              # Live Claude Vision API integration
@@ -105,7 +105,7 @@ Brand Arbiter classifies every brand rule into one of four types, each handled b
 
 ## Specification
 
-The full architectural specification lives in [`specs/brand-compliance-confidence-sketch-v2.1.md`](specs/brand-compliance-confidence-sketch-v2.1.md). It covers:
+The full architectural specification lives in [`specs/brand-compliance-confidence-sketch.md`](specs/brand-compliance-confidence-sketch.md). It covers:
 
 - Information flow with parallel tracks
 - All 6 composable blocks (4 rule types + Arbitrator + Learning Loop)
@@ -125,7 +125,7 @@ The full architectural specification lives in [`specs/brand-compliance-confidenc
 
 ## Origin
 
-Brand Arbiter grew out of the [AI Skill Architecture V4](specs/brand-compliance-confidence-sketch-v2.1.md#appendix-a-relationship-to-parent-architecture) blueprint — a universal pattern for business process automation that combines deterministic rules with semantic AI judgment. The architecture was validated against public [Mastercard Brand Center](https://www.mastercard.com/brandcenter/ca/en/brand-requirements/mastercard.html) guidelines but is designed to be brand-agnostic: swap the rule catalog and reference assets, and the engine works for any brand with measurable + subjective compliance rules.
+Brand Arbiter grew out of the [AI Skill Architecture V4](specs/brand-compliance-confidence-sketch.md#appendix-a-relationship-to-parent-architecture) blueprint — a universal pattern for business process automation that combines deterministic rules with semantic AI judgment. The architecture was validated against public [Mastercard Brand Center](https://www.mastercard.com/brandcenter/ca/en/brand-requirements/mastercard.html) guidelines but is designed to be brand-agnostic: swap the rule catalog and reference assets, and the engine works for any brand with measurable + subjective compliance rules.
 
 ## Author
 
