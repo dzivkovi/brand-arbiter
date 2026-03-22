@@ -2,11 +2,19 @@
 
 **Author:** Daniel Zivkovic, Magma Inc.
 **Date:** March 21, 2026
-**Version:** 2.1 (v1: initial sketch → v2: corrected actor assignments, added learning loop, multi-brand arbitration, reference asset library → v2.1: added structured confidence rubric, entity reconciliation)
+**Version:** 2.2 (v1: initial sketch → v2: corrected actor assignments, added learning loop, multi-brand arbitration, reference asset library → v2.1: added structured confidence rubric, entity reconciliation → v2.2: deterministic short-circuit, prompt polarity clarification)
 **Status:** Ready for Story Breakdown & Prototyping
 **Domain:** Brand Compliance Automation (validated against Mastercard public guidelines; designed for any brand with measurable + subjective rules)
 **Architectural Pattern:** Proposal-Commit (EIP: Intelligent Message Translator → Deterministic Channel Adapter)
 **Parent Blueprint:** AI Skill Architecture V4 — Universal Core
+
+---
+
+### Changelog: v2.1 → v2.2
+
+**Deterministic Short-Circuit (Block 1):** Clarified that Track A evaluation runs before Gatekeeper in the arbitration pipeline. When Track A produces a hard FAIL (area ratio below threshold), the result is committed immediately — Gatekeeper is bypassed because deterministic math does not require semantic confidence validation. This was always the spec's intent (Block 1: "math overrides vibes") but the bullet ordering implied Gatekeeper fired first. Triggered by Phase 2 live testing where Gatekeeper's dead-man's switch blocked legitimate Track A FAILs. See: `plans/elegant-tumbling-pancake.md`
+
+**Prompt Polarity Clarification (Track B):** Added explicit Boolean direction to the parity evaluation prompt. `visual_parity_assessment: true` means equal prominence (PASS), `false` means one brand dominates (FAIL). Previously ambiguous — Claude returned `false` with 1.00 confidence on a compliant image due to polarity confusion.
 
 ---
 
@@ -62,11 +70,14 @@ Six blocks. Four rule-processing patterns (ordered by architectural risk), one a
 
 - **Track A (Deterministic):** YOLO detects all payment logos in the asset. OpenCV calculates pixel area `(width × height)` for each detected logo. Produces exact area ratios.
 - **Track B (Semantic):** LLM evaluates subjective parity dimensions that pixel math cannot capture: visual prominence, color weight, placement hierarchy, and whether one brand "feels" dominant despite equal sizing. Returns judgment + `confidence_score`.
-- **Arbitration logic:**
-  - If Track A says PASS (areas within tolerance) AND Track B says PASS (no visual dominance): → commit `PASS`
-  - If Track A says FAIL (area ratio below threshold): → commit `FAIL` regardless of Track B (math overrides vibes)
-  - If Track A says PASS but Track B says FAIL (equal size but visual dominance): → commit `ESCALATED` with both measurements and semantic reasoning attached. This is the case where deterministic math alone would produce a false pass.
-  - If Track B confidence < 0.85: → commit `ESCALATED` before arbitration runs
+- **Arbitration logic (execution order):**
+  1. Entity Reconciliation: verify both tracks detected the same entities (Constraint 7)
+  2. Track A deterministic evaluation: compute PASS/FAIL from area ratio vs threshold
+  3. **Deterministic short-circuit:** if Track A says FAIL → commit `FAIL` immediately, bypass Gatekeeper (math overrides vibes)
+  4. Gatekeeper: if Track B confidence < 0.85 → commit `ESCALATED` (only runs when Track A passed)
+  5. Arbitration: compare Track A PASS vs Track B judgment
+     - Both PASS → commit `PASS`
+     - Track A PASS + Track B FAIL (equal size but visual dominance) → commit `ESCALATED` with both measurements and semantic reasoning attached. This is the case where deterministic math alone would produce a false pass.
 - **Parity tolerance:** MC logo area must be `>= competitor_area × 0.95` (5% tolerance). This constant must be named and configurable, not inline.
 
 #### Multi-Brand / Co-Brand Extension

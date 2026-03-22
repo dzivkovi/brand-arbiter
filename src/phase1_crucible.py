@@ -193,9 +193,10 @@ def arbitrate(
     Merges Track A and Track B for hybrid rules.
     Order of operations:
       1. Entity Reconciliation (Constraint 7)
-      2. Gatekeeper (Constraint 2)
-      3. Track A deterministic evaluation
-      4. Arbitration logic
+      2. Track A deterministic evaluation
+      3. Short-circuit: if Track A FAIL, return immediately (math overrides vibes)
+      4. Gatekeeper (Constraint 2) — only runs if Track A passed
+      5. Arbitration logic (Track A PASS vs Track B)
     """
     review_id = _generate_review_id()
     base = dict(
@@ -217,15 +218,7 @@ def arbitrate(
             arbitration_log="Entity Reconciliation failed — halted before Gatekeeper",
         )
 
-    # --- Step 2: Gatekeeper (fires SECOND) ---
-    gate_result = gatekeeper(track_b, rule_config)
-    if gate_result:
-        gate_result.review_id = review_id
-        gate_result.asset_id = asset_id
-        gate_result.track_a = base["track_a"]
-        return gate_result
-
-    # --- Step 3: Evaluate Track A deterministic result ---
+    # --- Step 2: Evaluate Track A deterministic result ---
     threshold = rule_config["deterministic_spec"]["threshold"]
     if track_a.area_ratio is not None and track_a.area_ratio < threshold:
         track_a.result = Result.FAIL
@@ -238,23 +231,34 @@ def arbitrate(
             f"Area ratio {track_a.area_ratio:.2f} >= threshold {threshold:.2f}"
         )
 
+    # --- Step 3: Deterministic short-circuit ---
+    # If Track A says FAIL, math is authoritative — skip Gatekeeper and arbitration
+    if track_a.result == Result.FAIL:
+        return AssessmentOutput(
+            **base,
+            final_result=Result.FAIL,
+            arbitration_log=(
+                f"Track A: FAIL ({track_a.evidence}) | "
+                f"Deterministic short-circuit — math overrides vibes, Gatekeeper bypassed"
+            ),
+        )
+
+    # --- Step 4: Gatekeeper (only runs when Track A passed) ---
+    gate_result = gatekeeper(track_b, rule_config)
+    if gate_result:
+        gate_result.review_id = review_id
+        gate_result.asset_id = asset_id
+        gate_result.track_a = base["track_a"]
+        return gate_result
+
     # Evaluate Track B result
     track_b.result = Result.PASS if track_b.visual_parity_assessment else Result.FAIL
 
-    # --- Step 4: Arbitration logic (Block 1 specific) ---
+    # --- Step 5: Arbitration logic (Block 1 specific) ---
     log_lines = [
         f"Track A: {track_a.result.value} ({track_a.evidence})",
         f"Track B: {track_b.result.value} (confidence: {track_b.confidence_score:.2f})",
     ]
-
-    # Rule: if Track A says FAIL, math overrides vibes
-    if track_a.result == Result.FAIL:
-        log_lines.append("Resolution: Track A FAIL overrides — deterministic math is authoritative")
-        return AssessmentOutput(
-            **base,
-            final_result=Result.FAIL,
-            arbitration_log=" | ".join(log_lines),
-        )
 
     # Both agree PASS
     if track_a.result == Result.PASS and track_b.result == Result.PASS:

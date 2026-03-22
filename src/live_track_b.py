@@ -67,7 +67,7 @@ Evaluate whether the payment logos have equal visual prominence. Consider:
 
 Write your reasoning in detail BEFORE stating your conclusion.
 
-Conclude with: "PARITY_HOLDS: true" or "PARITY_HOLDS: false"
+Conclude with: "PARITY_HOLDS: true" (logos have roughly equal prominence — no brand dominates) or "PARITY_HOLDS: false" (one brand visually dominates the others in size, placement, or treatment).
 
 ## STEP 3: CONFIDENCE SCORING (MANDATORY RUBRIC)
 Apply this rubric MECHANICALLY after your assessment. Do not skip any step.
@@ -95,7 +95,7 @@ You MUST respond with ONLY the following JSON object. No markdown, no backticks,
     }
   ],
   "reasoning_trace": "Your detailed Step 2 analysis here...",
-  "visual_parity_assessment": true or false,
+  "visual_parity_assessment": true or false,  // true = equal prominence (PASS), false = one dominates (FAIL)
   "rubric_penalties": [
     "Description of penalty: -0.XX"
   ],
@@ -273,11 +273,11 @@ SCENARIO_IMAGES = {
 }
 
 SCENARIO_EXPECTED = {
-    "clear_violation": Result.FAIL,
+    "clear_violation": Result.FAIL,  # Track A short-circuit — area_ratio 0.38 is catastrophic
     "hard_case": Result.ESCALATED,  # Track A PASS + Track B should see dominance
     "compliant": Result.PASS,
     "three_logos": Result.ESCALATED,  # Entity mismatch (YOLO sees 2, LLM may see 3)
-    "low_res": Result.FAIL,  # Or ESCALATED if occluded MC tanks confidence
+    "low_res": Result.ESCALATED,  # Entity mismatch — Claude may miss occluded MC logo
 }
 
 
