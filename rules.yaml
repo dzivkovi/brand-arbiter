@@ -33,10 +33,30 @@
 #
 # ── Available Metrics (deterministic_spec.metric) ───────────────────
 #
-#   logo_area_ratio   — MC logo area / largest competitor area
-#                       Use with threshold 0.95 for parity checks
-#   clear_space_ratio — min edge distance to competitor / MC logo width
-#                       Use with threshold 0.25 for spacing checks
+#   logo_area_ratio       — MC logo area / largest competitor area
+#                           Use with threshold 0.95 for parity checks
+#   clear_space_ratio     — min edge distance to competitor / MC logo width
+#                           Use with threshold 0.25 for spacing checks
+#   brand_dominance_ratio — subject brand area / reference brand area
+#                           Requires subject + reference fields in deterministic_spec
+#                           Use for co-brand dominance rules (e.g. BC-DOM-001)
+#
+# ── Co-Brand Fields (deterministic_spec, optional) ─────────────────
+#
+#   subject: <brand_label>    # Numerator brand for ratio (e.g. "barclays")
+#   reference: <brand_label>  # Denominator brand for ratio (e.g. "mastercard")
+#
+# ── Brand Namespace (optional) ─────────────────────────────────────
+#
+#   brand: <string>           # Owning brand (e.g. "mastercard", "barclays")
+#                             # Used for grouping results and collision detection
+#
+# ── Collision Groups (top-level, optional) ─────────────────────────
+#
+#   collision_groups:
+#     - name: <string>        # Human-readable collision name
+#       rules: [<rule_id>, <rule_id>]  # Rules that conflict
+#       reason: <string>      # Why these rules are mutually exclusive
 #
 # ── Examples ────────────────────────────────────────────────────────
 #
@@ -66,6 +86,7 @@ defaults:
 rules:
   MC-PAR-001:
     name: "Payment Mark Parity"
+    brand: "mastercard"
     type: hybrid
     block: 1
     deterministic_spec:
@@ -77,6 +98,7 @@ rules:
 
   MC-CLR-002:
     name: "Clear Space"
+    brand: "mastercard"
     type: hybrid
     block: 1
     deterministic_spec:
@@ -85,3 +107,25 @@ rules:
       threshold: 0.25
     semantic_spec:
       confidence_threshold: 0.85
+
+  BC-DOM-001:
+    name: "Barclays Brand Dominance (Co-Brand)"
+    brand: "barclays"
+    type: hybrid
+    block: 1
+    deterministic_spec:
+      metric: brand_dominance_ratio
+      subject: "barclays"
+      reference: "mastercard"
+      operator: ">="
+      threshold: 1.20
+    semantic_spec:
+      confidence_threshold: 0.85
+
+collision_groups:
+  - name: "Parity vs Dominance"
+    rules: ["MC-PAR-001", "BC-DOM-001"]
+    reason: >-
+      MC-PAR-001 requires mc_area/competitor_area >= 0.95 (parity implies
+      competitor/mc <= 1.053). BC-DOM-001 requires barclays_area/mc_area >= 1.20.
+      These constraints are mathematically mutually exclusive on a single asset.
