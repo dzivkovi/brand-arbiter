@@ -9,7 +9,9 @@ import pytest
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 from phase1_crucible import (
+    AssessmentOutput,
     CollisionReport,
+    ComplianceReport,
     EscalationReason,
     RULE_CATALOG,
     Result,
@@ -130,3 +132,120 @@ class TestDetectCollisions:
         raw = _load_yaml()
         collisions = detect_collisions(raw, active_rules=["MC-PAR-001", "BC-DOM-001"])
         assert len(collisions) == 1
+
+
+# ============================================================================
+# Step 4: ComplianceReport brand grouping and collision-aware aggregation
+# ============================================================================
+
+
+def _make_assessment(rule_id: str, result: Result) -> AssessmentOutput:
+    """Minimal assessment for testing report aggregation."""
+    return AssessmentOutput(
+        review_id="test-123",
+        rule_id=rule_id,
+        asset_id="test-asset",
+        timestamp="2026-03-23T00:00:00Z",
+        final_result=result,
+    )
+
+
+class TestGroupByBrand:
+    """Verify brand-grouped result aggregation."""
+
+    def test_separates_mc_and_bc(self):
+        """MC and BC rules go into separate brand groups."""
+        results = [
+            _make_assessment("MC-PAR-001", Result.FAIL),
+            _make_assessment("BC-DOM-001", Result.PASS),
+        ]
+        grouped = ComplianceReport.group_by_brand(results, RULE_CATALOG)
+        assert "mastercard" in grouped
+        assert "barclays" in grouped
+        assert len(grouped["mastercard"]) == 1
+        assert len(grouped["barclays"]) == 1
+
+    def test_empty_list(self):
+        """Empty results → empty groups."""
+        grouped = ComplianceReport.group_by_brand([], RULE_CATALOG)
+        assert grouped == {}
+
+    def test_multiple_mc_rules_same_group(self):
+        """Multiple MC rules grouped under mastercard."""
+        results = [
+            _make_assessment("MC-PAR-001", Result.PASS),
+            _make_assessment("MC-CLR-002", Result.PASS),
+        ]
+        grouped = ComplianceReport.group_by_brand(results, RULE_CATALOG)
+        assert len(grouped["mastercard"]) == 2
+
+
+class TestComplianceReportCollisions:
+    """Verify collision-aware worst_case aggregation."""
+
+    def test_collisions_escalate_overall(self):
+        """When all rules PASS but collision exists → overall ESCALATED."""
+        collision = CollisionReport(
+            collision_id="col-test",
+            rules_involved=["MC-PAR-001", "BC-DOM-001"],
+            brands_involved=["mastercard", "barclays"],
+            reason="test",
+            mathematical_proof="test",
+            result=Result.ESCALATED,
+            escalation_reason=EscalationReason.CROSS_BRAND_CONFLICT.value,
+        )
+        overall = ComplianceReport.worst_case(
+            [Result.PASS, Result.PASS],
+            collisions=[collision],
+        )
+        assert overall == Result.ESCALATED
+
+    def test_fail_overrides_collision(self):
+        """FAIL still wins over collision ESCALATED (FAIL > ESCALATED)."""
+        collision = CollisionReport(
+            collision_id="col-test",
+            rules_involved=["MC-PAR-001", "BC-DOM-001"],
+            brands_involved=["mastercard", "barclays"],
+            reason="test",
+            mathematical_proof="test",
+            result=Result.ESCALATED,
+            escalation_reason=EscalationReason.CROSS_BRAND_CONFLICT.value,
+        )
+        overall = ComplianceReport.worst_case(
+            [Result.FAIL, Result.PASS],
+            collisions=[collision],
+        )
+        assert overall == Result.FAIL
+
+    def test_backward_compatible_without_collisions(self):
+        """No collisions parameter → original behavior preserved."""
+        assert ComplianceReport.worst_case([Result.PASS, Result.PASS]) == Result.PASS
+        assert ComplianceReport.worst_case([Result.ESCALATED]) == Result.ESCALATED
+        assert ComplianceReport.worst_case([Result.FAIL]) == Result.FAIL
+
+    def test_report_preserves_individual_results(self):
+        """Collision doesn't overwrite per-rule results."""
+        mc_assessment = _make_assessment("MC-PAR-001", Result.FAIL)
+        bc_assessment = _make_assessment("BC-DOM-001", Result.PASS)
+        collision = CollisionReport(
+            collision_id="col-test",
+            rules_involved=["MC-PAR-001", "BC-DOM-001"],
+            brands_involved=["mastercard", "barclays"],
+            reason="test",
+            mathematical_proof="test",
+            result=Result.ESCALATED,
+            escalation_reason=EscalationReason.CROSS_BRAND_CONFLICT.value,
+        )
+        report = ComplianceReport(
+            asset_id="test",
+            timestamp="2026-03-23T00:00:00Z",
+            rule_results=[mc_assessment, bc_assessment],
+            overall_result=ComplianceReport.worst_case(
+                [Result.FAIL, Result.PASS], collisions=[collision]
+            ),
+            collisions=[collision],
+        )
+        # Individual results preserved under the collision umbrella
+        assert report.rule_results[0].final_result == Result.FAIL  # MC-PAR-001
+        assert report.rule_results[1].final_result == Result.PASS  # BC-DOM-001
+        assert len(report.collisions) == 1

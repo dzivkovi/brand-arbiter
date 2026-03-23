@@ -138,14 +138,40 @@ class ComplianceReport:
     timestamp: str
     rule_results: list[AssessmentOutput]
     overall_result: Result  # worst-case: FAIL > ESCALATED > PASS
+    brand_results: dict[str, list[AssessmentOutput]] = field(default_factory=dict)
+    collisions: list = field(default_factory=list)  # list[CollisionReport]
 
     @staticmethod
-    def worst_case(results: list[Result]) -> Result:
+    def worst_case(
+        results: list[Result],
+        collisions: list | None = None,
+    ) -> Result:
+        """Compute worst-case result across rules and collisions.
+
+        Collisions set a floor of ESCALATED but never overwrite individual
+        rule results — the client sees per-rule verdicts underneath the
+        CROSS_BRAND_CONFLICT umbrella.
+        """
         if Result.FAIL in results:
             return Result.FAIL
         if Result.ESCALATED in results:
             return Result.ESCALATED
+        if collisions:
+            return Result.ESCALATED
         return Result.PASS
+
+    @staticmethod
+    def group_by_brand(
+        rule_results: list[AssessmentOutput],
+        catalog: dict,
+    ) -> dict[str, list[AssessmentOutput]]:
+        """Group AssessmentOutputs by the brand field from their rule config."""
+        groups: dict[str, list[AssessmentOutput]] = {}
+        for assessment in rule_results:
+            rule_config = catalog.get(assessment.rule_id, {})
+            brand = rule_config.get("brand", "unknown")
+            groups.setdefault(brand, []).append(assessment)
+        return groups
 
 
 @dataclass
