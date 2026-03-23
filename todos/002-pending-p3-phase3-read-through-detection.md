@@ -15,7 +15,7 @@ The engine cannot yet detect when a logo is used as a letter substitution (e.g.,
 ## Acceptance Criteria
 
 - [ ] Track B prompt for read-through evaluation added to `RULE_PROMPTS`
-- [ ] New rule `MC-RDT-003` added to `rules.yaml` (type: semantic)
+- [ ] New rule added to `rules.yaml` (type: semantic, rule ID to be assigned per naming convention)
 - [ ] Normal logo placement → `PASS`
 - [ ] Symbol replacing a letter → `FAIL`
 - [ ] Borderline case (Symbol near but not replacing a letter) → `ESCALATED` if confidence < 0.90

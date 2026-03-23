@@ -14,10 +14,11 @@ The engine cannot yet check brand name spelling/casing (e.g., rejecting "MasterC
 
 ## Acceptance Criteria
 
-- [ ] New rule `MC-LET-004` added to `rules.yaml` (type: regex)
+- [ ] New rule added to `rules.yaml` (type: regex, rule ID to be assigned per naming convention)
 - [ ] OCR text extraction implemented (or mocked for Phase 4)
-- [ ] Regex rejects: "MasterCard", "Master Card", "master card"
-- [ ] Regex accepts: "Mastercard", "MASTERCARD" (all-caps context)
+- [ ] Regex rejects known-bad patterns: "MasterCard", "Master Card", "master card"
+- [ ] Regex accepts known-good patterns: "Mastercard"
+- [ ] Test includes "MASTERCARD" in all-caps context (spec lists as test case — acceptance TBD)
 - [ ] Test assets with text samples created
 - [ ] All existing tests still pass
 

@@ -17,7 +17,7 @@ The `LearningStore` backend works (record assessments, record overrides, compute
 - [ ] CLI command or interactive prompt for human override submission
 - [ ] Override linked to original `review_id`
 - [ ] Override rate surfaced in compliance report output
-- [ ] Recalibration recommendation printed when override rate > 20%
+- [ ] Recalibration recommendation printed when override rate exceeds threshold (currently >20% in `LearningStore` code; spec uses 3/10 as example)
 - [ ] Override data structured as labeled evaluation examples
 - [ ] All existing tests still pass
 
