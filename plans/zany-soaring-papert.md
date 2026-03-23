@@ -269,3 +269,36 @@ Step 1 (YAML schema) ─┬─ Step 2 (CollisionReport + detect_collisions)
 ```
 
 Steps 2 and 3 can proceed in parallel after Step 1. They converge at Step 5.
+
+---
+
+## v1.2.0 Release Status: COMPLETE (145 tests, 7 commits)
+
+---
+
+## Post-Release: Technical Debt for v1.3.0
+
+### DEBT-001: "Ghost of Mastercard" — hardcoded brand in TrackAOutput.__post_init__
+
+**Found by:** Gemini peer review (2026-03-23)
+**Severity:** Low (demo-safe, output correct, but architecturally inconsistent)
+**File:** `src/phase1_crucible.py`, `TrackAOutput.__post_init__` (lines 67–93)
+
+**Problem:** `__post_init__` hardcodes `"mastercard"` as the reference brand for all three derived metrics (`area_ratio`, `clear_space_ratio`, `brand_dominance_ratio`). For BC-DOM-001, `_evaluate_brand_dominance()` in `live_track_a.py` silently overwrites `brand_dominance_ratio` with the correct subject/reference calculation. The dataclass "knows" what Mastercard is — violating the rule-agnostic architecture.
+
+**Current code (the problem):**
+```python
+mc = [e for e in self.entities if e.label.lower() == "mastercard"]
+competitors = [e for e in self.entities if e.label.lower() != "mastercard"]
+# ...
+self.brand_dominance_ratio = comp_area / mc_area  # always mc-centric
+```
+
+**Why it's safe for now:** `_evaluate_brand_dominance()` overwrites the ratio with correct math using `subject`/`reference` from YAML. All 145 tests pass. Demo output is correct.
+
+**Why it must be fixed for v1.3.0:** If someone adds a non-Mastercard parity rule (e.g., Visa vs Amex co-brand), `__post_init__` would compute garbage ratios. The fix is to make `TrackAOutput` a dumb container and move all metric computation into `live_track_a.py` where `rule_config` is available.
+
+**Fix (v1.3.0):**
+1. Strip all metric math out of `TrackAOutput.__post_init__` — dataclasses should be dumb containers
+2. Move `area_ratio`, `clear_space_ratio`, `brand_dominance_ratio` computation into the respective `_evaluate_*()` functions in `live_track_a.py`
+3. The `__post_init__` should only compute `DetectedEntity.area` from bbox (geometric fact, not rule-dependent)
