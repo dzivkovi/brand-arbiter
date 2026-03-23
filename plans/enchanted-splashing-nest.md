@@ -1,92 +1,118 @@
-# Plan: Task 03 — Multi-Rule Orchestration (MC-CLR-002)
+# Plan: Task 04 — Live LLM Integration (Multimodal Track B)
 
 ## Context
 
-We have a dual-track arbitration engine that handles one rule (MC-PAR-001 — Payment Mark Parity). The spec asks us to prove the architecture scales by adding MC-CLR-002 (Clear Space Rule) and refactoring the pipeline to evaluate all rules simultaneously, outputting a ComplianceReport.
+The mocked pipeline is hardened with 76+ tests. Phase 2 already built a working `call_live_track_b()` with SDK init, base64 encoding, and basic JSON parsing. But the parsing is inline, loosely validated, and untestable in isolation. Task 04 hardens this into a production-ready vision evaluator where **strict parsing into TrackBOutput is non-negotiable** — if the LLM returns junk, the system escalates, never guesses.
+
+### What already exists (no rework needed)
+- SDK initialization: `anthropic.Anthropic()` in `call_live_track_b()` (line 182)
+- Base64 encoding: inline at lines 189-190
+- Confidence rubric: fully implemented in `PARITY_EVALUATION_PROMPT` and `CLEAR_SPACE_EVALUATION_PROMPT`
+- Basic JSON parsing: lines 238-267 (but not strict, not testable, no field validation)
+
+### Async decision
+The spec mentions `AsyncAnthropic`. Staying **sync** because: rules evaluate sequentially (no parallelism benefit), async would break all 76 existing tests (need pytest-asyncio), and agent-rules.md mandates minimalism. Async is a clean future migration when parallel rule evaluation is needed.
 
 ## Steps (strictly sequential, auto-commit after each green test)
 
-### Step 1: Extend core types + rule catalog (`src/phase1_crucible.py`, `tests/test_arbitration.py`)
+### Step 1: Extract `encode_image_base64()` helper
+**File:** `src/live_track_b.py`
 
-1. Add `MC-CLR-002` to `RULE_CATALOG`:
-   - type: hybrid, metric: `clear_space_ratio`, operator: `>=`, threshold: `0.25`
-2. Add named constant `CLEAR_SPACE_THRESHOLD = 0.25`
-3. Add `clear_space_ratio: Optional[float]` to `TrackAOutput` (computed in `__post_init__`):
-   - Find MC entity, compute `mc_width = bbox[2] - bbox[0]`
-   - For each competitor, compute min edge-to-edge distance (0 if overlapping)
-   - `clear_space_ratio = min_distance / mc_width`
-4. Generalize `arbitrate()` to read `rule_config["deterministic_spec"]["metric"]` and dispatch:
-   - `logo_area_ratio` → use `track_a.area_ratio` (existing)
-   - `clear_space_ratio` → use `track_a.clear_space_ratio`
-5. Add `ComplianceReport` dataclass: `asset_id, timestamp, rule_results: list[AssessmentOutput], overall_result: Result`
-6. Write `TestClearSpaceArbitration` tests (5 tests): both_pass, short_circuit, disagree_escalates, gatekeeper, entity_mismatch
-7. Add `make_track_a_clearspace(clear_space_ratio, labels)` helper
+Extract the inline base64 + media type logic (lines 185-195) into a standalone function:
+```python
+def encode_image_base64(image_path: str | Path) -> tuple[str, str]:
+    """Encode image to base64, return (data, media_type). Raises FileNotFoundError."""
+```
+Update `call_live_track_b()` to call this helper.
 
-**Commit:** `agent: add MC-CLR-002 to rule catalog, extend TrackAOutput and arbitrate() for multi-metric`
+**Commit:** `agent: extract encode_image_base64 helper from call_live_track_b`
 
-### Step 2: Route Track A by rule_id (`src/live_track_a.py`, `tests/test_live_track_a.py`)
+### Step 2: Extract + harden `parse_track_b_response()` (THE CRITICAL STEP)
+**File:** `src/live_track_b.py`
 
-1. Add `compute_min_edge_distance(mc_bbox, comp_bbox) -> int` helper
-2. Refactor `evaluate_track_a` to dispatch by rule_id:
-   - `MC-PAR-001` → existing parity math (extract to `_evaluate_parity`)
-   - `MC-CLR-002` → new `_evaluate_clear_space` (distance / mc_width vs threshold)
-3. Write `TestComputeMinEdgeDistance` (5 tests: horizontal, vertical, overlap, adjacent, diagonal)
-4. Write `TestEvaluateTrackAClearSpace` (10 tests: pass, fail, threshold boundaries, edge cases, evidence)
-5. All existing MC-PAR-001 tests must still pass
+Extract lines 238-267 into a strict standalone parser:
+```python
+def parse_track_b_response(raw_text: str, rule_id: str) -> TrackBOutput:
+    """Parse LLM text response into TrackBOutput. Raises ValueError on any schema violation."""
+```
 
-**Commit:** `agent: route Track A by rule_id, add clear space distance math with tests`
+**Strict validation rules (non-negotiable):**
+1. Strip markdown fencing (```` ``` ````) if present
+2. `json.loads()` — must parse as valid JSON
+3. Required fields: `entities`, `semantic_pass`, `confidence_score` — missing any → `ValueError`
+4. `semantic_pass` must be `bool` — string "true" or int → `ValueError`
+5. `confidence_score` must be `float` in `[0.10, 1.00]` — out of range → `ValueError`
+6. Each entity must have `label` (str) and `bbox` (list of 4 numbers) — malformed → `ValueError`
+7. On ANY failure: raise `ValueError` with descriptive message — caller catches as ESCALATED
 
-### Step 3a: Rename `visual_parity_assessment` → `semantic_pass` (global refactor)
+Update `call_live_track_b()` to call `parse_track_b_response()` instead of inline parsing.
 
-**Rationale:** Semantic drift is unacceptable. `visual_parity_assessment` is parity-specific; the field is a generic "did the semantic track judge compliance?" boolean. Rename to `semantic_pass` across the entire codebase.
+**Commit:** `agent: extract strict parse_track_b_response with schema validation`
 
-**Files to modify:** `src/phase1_crucible.py`, `src/live_track_b.py`, `src/main.py`, `tests/test_arbitration.py`, `tests/test_live_track_a.py`
+### Step 3: Pipeline error handling — parse failures become ESCALATED
+**File:** `src/main.py`
 
-1. Rename field in `TrackBOutput` dataclass: `visual_parity_assessment: bool` → `semantic_pass: bool`
-2. Global find-and-replace `visual_parity_assessment` → `semantic_pass` in all source and test files
-3. Update prompt JSON schema in `PARITY_EVALUATION_PROMPT` to request `semantic_pass` key
-4. Run full test suite — all 50+ tests must pass with the new name
+In `run_pipeline()`, wrap the `call_live_track_b()` call with error handling:
+```python
+try:
+    track_b = call_live_track_b(image_path, rule_id=rule_id)
+except (ValueError, Exception) as e:
+    # LLM returned junk — escalate, don't guess
+    assessment = _build_escalated_assessment(track_a, asset_id, str(e))
+    store.record_assessment(assessment)
+    rule_results.append(assessment)
+    continue
+```
 
-**Commit:** `agent: rename visual_parity_assessment → semantic_pass (no semantic drift in domain model)`
+Add `_build_escalated_assessment()` helper (mirrors `_build_short_circuit_assessment` but with `Result.ESCALATED` and an escalation reason).
 
-### Step 3b: Route Track B by rule_id (`src/live_track_b.py`)
+**Commit:** `agent: pipeline catches Track B parse failures as ESCALATED`
 
-1. Add `CLEAR_SPACE_EVALUATION_PROMPT` — rubric for crowding/background/cutoff
-2. Add `RULE_PROMPTS = {"MC-PAR-001": PARITY_EVALUATION_PROMPT, "MC-CLR-002": CLEAR_SPACE_EVALUATION_PROMPT}`
-3. Update `call_live_track_b` to use `RULE_PROMPTS[rule_id]`
-4. Add mock scenarios: `clear_space_violation` (gap=10, ratio=0.10→FAIL), `clear_space_compliant` (gap=30, ratio=0.30→PASS)
-5. Update `SCENARIO_IMAGES`, `SCENARIO_EXPECTED`
+### Step 4: Create `tests/test_live_track_b.py`
+**File:** `tests/test_live_track_b.py`
 
-**Commit:** `agent: route Track B prompts by rule_id, add clear space mock scenarios`
+**TestEncodeImageBase64** (3 tests):
+- `test_encode_png_returns_base64_and_media_type`: valid PNG → correct base64 + "image/png"
+- `test_encode_jpeg_returns_jpeg_media_type`: .jpg → "image/jpeg"
+- `test_encode_missing_file_raises`: nonexistent path → `FileNotFoundError`
 
-### Step 4: Multi-rule pipeline + ComplianceReport (`src/main.py`)
+**TestParseTrackBResponse** (10+ tests — strict parsing is non-negotiable):
+- `test_valid_json_returns_track_b_output`: well-formed response → correct TrackBOutput
+- `test_strips_markdown_fencing`: ```json ... ``` → still parses
+- `test_missing_semantic_pass_raises`: omit field → ValueError
+- `test_missing_confidence_score_raises`: omit field → ValueError
+- `test_missing_entities_raises`: omit field → ValueError
+- `test_semantic_pass_string_raises`: "true" instead of true → ValueError
+- `test_confidence_below_minimum_raises`: 0.05 → ValueError
+- `test_confidence_above_maximum_raises`: 1.50 → ValueError
+- `test_entity_missing_bbox_raises`: entity without bbox → ValueError
+- `test_entity_bbox_wrong_length_raises`: bbox=[1,2,3] → ValueError
+- `test_complete_garbage_raises`: "I can't evaluate this" → ValueError
+- `test_rubric_penalties_optional`: missing rubric_penalties → defaults to []
+- `test_reasoning_trace_optional`: missing reasoning_trace → defaults to ""
 
-1. Import `ComplianceReport`, add `ACTIVE_RULES = ["MC-PAR-001", "MC-CLR-002"]`
-2. Refactor `run_pipeline` to loop over rule_ids, collect AssessmentOutputs
-3. Build ComplianceReport with worst-case overall_result (FAIL > ESCALATED > PASS)
-4. Update `mock_track_b_for_scenario` for new scenarios
-5. Update CLI output for per-rule + overall results
-6. Dry-run validation: `python src/main.py --scenario hard_case --dry-run`
+**Commit:** `agent: add comprehensive tests for Track B parsing and base64 encoding`
 
-**Commit:** `agent: refactor pipeline for multi-rule execution, add ComplianceReport`
+### Step 5: Verify existing tests + dry-run
+- `python -m pytest tests/ -v` — all 76+ existing tests + new tests pass
+- `cd src && python main.py --scenario all --dry-run` — dry-run still works
 
-## Key Design Decisions
-
-- **Two computed fields, not an abstraction**: `TrackAOutput` gets both `area_ratio` and `clear_space_ratio` in `__post_init__`. Simple if/elif in `arbitrate()`, no framework.
-- **Rename `visual_parity_assessment` → `semantic_pass`**: No semantic drift — the boolean means "did semantic track judge compliance?" regardless of rule. Global refactor in Step 3a.
-- **Edge distance formula**: `dx = max(0, max(b2_x1-b1_x2, b1_x1-b2_x2))`, `dy = max(0, ...)`, `distance = min(dx, dy) if both > 0 else max(dx, dy)`. Returns 0 for overlapping boxes.
-- **ComplianceReport.overall_result**: Worst-case aggregation across all rules.
-
-## Verification
-
-After each step: `python -m pytest tests/ -v` (all tests green).
-Final: `cd src && python main.py --scenario hard_case --dry-run` for integration check.
+**Commit:** (only if any fixups needed)
 
 ## Critical Files
+- [live_track_b.py](src/live_track_b.py) — `encode_image_base64()`, `parse_track_b_response()`, `call_live_track_b()`
+- [main.py](src/main.py) — error handling wrapper, `_build_escalated_assessment()`
+- [phase1_crucible.py](src/phase1_crucible.py) — `TrackBOutput` dataclass (read-only, schema authority)
+- [tests/test_live_track_b.py](tests/test_live_track_b.py) — new test file
 
-- [phase1_crucible.py](src/phase1_crucible.py) — RULE_CATALOG, TrackAOutput, arbitrate(), ComplianceReport
-- [live_track_a.py](src/live_track_a.py) — evaluate_track_a routing, distance math
-- [live_track_b.py](src/live_track_b.py) — RULE_PROMPTS, CLEAR_SPACE_EVALUATION_PROMPT, mock scenarios
-- [main.py](src/main.py) — run_pipeline multi-rule loop, ComplianceReport output
-- [test_arbitration.py](tests/test_arbitration.py) — TestClearSpaceArbitration
-- [test_live_track_a.py](tests/test_live_track_a.py) — TestComputeMinEdgeDistance, TestEvaluateTrackAClearSpace
+## Reusable functions from phase1_crucible.py
+- `_generate_review_id()` (line 422) — for building AssessmentOutput
+- `_now()` (line 428) — timestamp
+- `_serialize_track_a()` (line 432) — Track A serialization
+- `TrackBOutput` (line 101) — the target dataclass schema
+- `DetectedEntity` (line 81) — entity construction in parser
+
+## Verification
+1. `python -m pytest tests/ -v` — all tests green (76 existing + ~15 new)
+2. `cd src && python main.py --scenario all --dry-run` — ComplianceReport output unchanged
+3. `cd src && python main.py --scenario hard_case` — live LLM call (requires ANTHROPIC_API_KEY)
