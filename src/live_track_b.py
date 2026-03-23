@@ -190,6 +190,94 @@ def encode_image_base64(image_path: str | Path) -> tuple[str, str]:
 
 
 # ============================================================================
+# Strict Response Parsing (Constraint 4: The Validator cannot invent data)
+# ============================================================================
+
+_REQUIRED_FIELDS = ("entities", "semantic_pass", "confidence_score")
+_MIN_CONFIDENCE = 0.10
+_MAX_CONFIDENCE = 1.00
+
+
+def parse_track_b_response(raw_text: str, rule_id: str) -> TrackBOutput:
+    """Parse LLM text response into TrackBOutput with strict schema validation.
+
+    Raises ValueError on ANY schema violation — the pipeline catches this
+    as ESCALATED. The parser never guesses or fills in defaults for
+    required fields.
+    """
+    # Strip markdown fencing if present
+    cleaned = raw_text.strip()
+    if cleaned.startswith("```"):
+        cleaned = cleaned.split("\n", 1)[1] if "\n" in cleaned else cleaned[3:]
+    if cleaned.endswith("```"):
+        cleaned = cleaned[:-3]
+    cleaned = cleaned.strip()
+
+    # Parse JSON
+    try:
+        data = json.loads(cleaned)
+    except json.JSONDecodeError as e:
+        raise ValueError(f"LLM did not return valid JSON: {e}") from e
+
+    if not isinstance(data, dict):
+        raise ValueError(f"Expected JSON object, got {type(data).__name__}")
+
+    # Validate required fields exist
+    for field in _REQUIRED_FIELDS:
+        if field not in data:
+            raise ValueError(f"Missing required field: '{field}'")
+
+    # Validate semantic_pass is strictly bool (not string, not int)
+    if not isinstance(data["semantic_pass"], bool):
+        raise ValueError(
+            f"'semantic_pass' must be bool, got {type(data['semantic_pass']).__name__}: "
+            f"{data['semantic_pass']!r}"
+        )
+
+    # Validate confidence_score is numeric and in range
+    score = data["confidence_score"]
+    if not isinstance(score, (int, float)):
+        raise ValueError(
+            f"'confidence_score' must be numeric, got {type(score).__name__}"
+        )
+    if not (_MIN_CONFIDENCE <= float(score) <= _MAX_CONFIDENCE):
+        raise ValueError(
+            f"'confidence_score' {score} out of range [{_MIN_CONFIDENCE}, {_MAX_CONFIDENCE}]"
+        )
+
+    # Validate entities
+    raw_entities = data["entities"]
+    if not isinstance(raw_entities, list):
+        raise ValueError(f"'entities' must be a list, got {type(raw_entities).__name__}")
+
+    entities = []
+    for i, ent in enumerate(raw_entities):
+        if not isinstance(ent, dict):
+            raise ValueError(f"Entity {i} must be a dict, got {type(ent).__name__}")
+        if "label" not in ent:
+            raise ValueError(f"Entity {i} missing required field 'label'")
+        if "bbox" not in ent:
+            raise ValueError(f"Entity {i} missing required field 'bbox'")
+        bbox = ent["bbox"]
+        if not isinstance(bbox, list) or len(bbox) != 4:
+            raise ValueError(
+                f"Entity {i} 'bbox' must be a list of 4 numbers, got {bbox!r}"
+            )
+        if not all(isinstance(v, (int, float)) for v in bbox):
+            raise ValueError(f"Entity {i} 'bbox' contains non-numeric values: {bbox!r}")
+        entities.append(DetectedEntity(label=ent["label"].lower(), bbox=bbox))
+
+    return TrackBOutput(
+        rule_id=rule_id,
+        entities=entities,
+        semantic_pass=data["semantic_pass"],
+        confidence_score=float(data["confidence_score"]),
+        reasoning_trace=data.get("reasoning_trace", ""),
+        rubric_penalties=data.get("rubric_penalties", []),
+    )
+
+
+# ============================================================================
 # Live Track B: Anthropic Claude Vision API
 # ============================================================================
 
@@ -199,8 +287,10 @@ def call_live_track_b(
     model: str = "claude-sonnet-4-20250514",
 ) -> TrackBOutput:
     """
-    Sends an image to Claude's vision API with the parity evaluation prompt.
-    Parses the structured JSON response into a TrackBOutput.
+    Sends an image to Claude's vision API with the structured evaluation prompt.
+    Parses the response through strict schema validation into a TrackBOutput.
+
+    Raises ValueError if the LLM response fails schema validation.
     """
     client = anthropic.Anthropic()  # reads ANTHROPIC_API_KEY from env
 
@@ -216,7 +306,7 @@ def call_live_track_b(
     except ImportError:
         resolution_note = "Image dimensions: unknown (Pillow not installed)"
 
-    print(f"  Calling Claude ({model}) with image: {image_path.name}")
+    print(f"  Calling Claude ({model}) with image: {Path(image_path).name}")
     print(f"  {resolution_note}")
 
     # Make the API call
@@ -244,42 +334,9 @@ def call_live_track_b(
         ],
     )
 
-    # Extract the text response
+    # Extract and parse through strict validator
     raw_text = response.content[0].text.strip()
-
-    # Parse JSON (handle potential markdown fencing)
-    cleaned = raw_text
-    if cleaned.startswith("```"):
-        cleaned = cleaned.split("\n", 1)[1] if "\n" in cleaned else cleaned[3:]
-    if cleaned.endswith("```"):
-        cleaned = cleaned[:-3]
-    cleaned = cleaned.strip()
-
-    try:
-        data = json.loads(cleaned)
-    except json.JSONDecodeError as e:
-        print(f"\n  ⚠️  Failed to parse LLM response as JSON:")
-        print(f"  Raw response:\n{raw_text[:500]}")
-        raise ValueError(f"LLM did not return valid JSON: {e}") from e
-
-    # Convert to TrackBOutput
-    entities = []
-    for ent in data.get("entities", []):
-        entities.append(DetectedEntity(
-            label=ent["label"].lower(),
-            bbox=ent["bbox"],
-        ))
-
-    track_b = TrackBOutput(
-        rule_id=rule_id,
-        entities=entities,
-        semantic_pass=data["semantic_pass"],
-        confidence_score=data["confidence_score"],
-        reasoning_trace=data.get("reasoning_trace", ""),
-        rubric_penalties=data.get("rubric_penalties", []),
-    )
-
-    return track_b
+    return parse_track_b_response(raw_text, rule_id)
 
 
 # ============================================================================
