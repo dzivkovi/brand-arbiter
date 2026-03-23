@@ -4,10 +4,61 @@
 # The engine reads this at startup. To change a threshold or add a rule,
 # edit this file — no Python code changes needed.
 #
-# Rule types:
-#   hybrid        — Track A (math) + Track B (AI) -> Arbitrator
-#   deterministic — Track A only (math is authoritative)
-#   semantic      — Track B only (AI judgment)
+# ── Schema Reference ────────────────────────────────────────────────
+#
+# rules:
+#   <RULE-ID>:                    # Unique ID, e.g. MC-PAR-001, BC-CLR-003
+#     name: <string>              # Human-readable rule name
+#     type: <rule_type>           # See "Rule Types" below
+#     block: <int>                # Grouping block from brand guidelines
+#
+#     deterministic_spec:         # Required for: hybrid, deterministic
+#       metric: <metric_name>     # See "Available Metrics" below
+#       operator: ">="            # Comparison operator (currently only >=)
+#       threshold: <float>        # Value between 0.0 and 1.0
+#
+#     semantic_spec:              # Required for: hybrid, semantic
+#       confidence_threshold: <float>  # Min AI confidence (0.0–1.0)
+#                                      # Below this → ESCALATED (Gatekeeper)
+#
+# ── Rule Types ──────────────────────────────────────────────────────
+#
+#   hybrid        — Track A (math) + Track B (AI) → Arbitrator
+#                   Both tracks run; disagreement → ESCALATED
+#   deterministic — Track A only (math is authoritative, AI not consulted)
+#                   semantic_spec is ignored
+#   semantic      — Track B only (AI judgment, no math check)
+#                   deterministic_spec is ignored
+#   regex         — OCR + pattern matching (planned, not yet implemented)
+#
+# ── Available Metrics (deterministic_spec.metric) ───────────────────
+#
+#   logo_area_ratio   — MC logo area / largest competitor area
+#                       Use with threshold 0.95 for parity checks
+#   clear_space_ratio — min edge distance to competitor / MC logo width
+#                       Use with threshold 0.25 for spacing checks
+#
+# ── Examples ────────────────────────────────────────────────────────
+#
+#   # A deterministic-only rule (no AI cost):
+#   BC-SPC-001:
+#     name: "Barclays Minimum Spacing"
+#     type: deterministic
+#     block: 2
+#     deterministic_spec:
+#       metric: clear_space_ratio
+#       operator: ">="
+#       threshold: 0.30
+#
+#   # A semantic-only rule (AI judges, no math):
+#   MC-RDT-003:
+#     name: "Read-Through Check"
+#     type: semantic
+#     block: 3
+#     semantic_spec:
+#       confidence_threshold: 0.90
+#
+# ════════════════════════════════════════════════════════════════════
 
 rules:
   MC-PAR-001:

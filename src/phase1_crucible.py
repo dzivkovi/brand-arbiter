@@ -154,7 +154,7 @@ def load_rule_catalog(path: Path | None = None) -> dict:
     """
     if path is None:
         path = Path(__file__).parent.parent / "rules.yaml"
-    with open(path) as f:
+    with open(path, encoding="utf-8") as f:
         return yaml.safe_load(f)["rules"]
 
 
