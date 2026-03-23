@@ -67,7 +67,7 @@ def make_track_b(parity_holds, confidence, labels=("mastercard", "visa")):
     return TrackBOutput(
         rule_id="MC-PAR-001",
         entities=make_entities(*labels),
-        visual_parity_assessment=parity_holds,
+        semantic_pass=parity_holds,
         confidence_score=confidence,
         reasoning_trace="test",
     )
@@ -106,7 +106,7 @@ class TestEntityReconciliation:
         b = TrackBOutput(
             rule_id="MC-PAR-001",
             entities=[DetectedEntity(label="mastercard", bbox=[0, 0, 80, 80])],
-            visual_parity_assessment=True,
+            semantic_pass=True,
             confidence_score=0.95,
             reasoning_trace="test",
         )
@@ -387,7 +387,7 @@ def make_track_b_clearspace(semantic_pass, confidence, labels=("mastercard", "vi
     return TrackBOutput(
         rule_id="MC-CLR-002",
         entities=make_entities(*labels),
-        visual_parity_assessment=semantic_pass,
+        semantic_pass=semantic_pass,
         confidence_score=confidence,
         reasoning_trace="test",
     )

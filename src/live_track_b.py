@@ -95,7 +95,7 @@ You MUST respond with ONLY the following JSON object. No markdown, no backticks,
     }
   ],
   "reasoning_trace": "Your detailed Step 2 analysis here...",
-  "visual_parity_assessment": true or false,  // true = equal prominence (PASS), false = one dominates (FAIL)
+  "semantic_pass": true or false,  // true = equal prominence (PASS), false = one dominates (FAIL)
   "rubric_penalties": [
     "Description of penalty: -0.XX"
   ],
@@ -197,7 +197,7 @@ def call_live_track_b(
     track_b = TrackBOutput(
         rule_id=rule_id,
         entities=entities,
-        visual_parity_assessment=data["visual_parity_assessment"],
+        semantic_pass=data["semantic_pass"],
         confidence_score=data["confidence_score"],
         reasoning_trace=data.get("reasoning_trace", ""),
         rubric_penalties=data.get("rubric_penalties", []),
@@ -328,7 +328,7 @@ def run_live_test(
 
     print(f"\n  --- Track B Response ---")
     print(f"  Entities detected: {[e.label for e in track_b.entities]}")
-    print(f"  Visual parity holds: {track_b.visual_parity_assessment}")
+    print(f"  Semantic pass: {track_b.semantic_pass}")
     print(f"  Confidence score: {track_b.confidence_score:.2f}")
     print(f"  Rubric penalties: {track_b.rubric_penalties}")
     print(f"  Reasoning (first 200 chars): {track_b.reasoning_trace[:200]}...")

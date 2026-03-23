@@ -70,7 +70,7 @@ def mock_track_b_for_scenario(scenario: str):
     return TrackBOutput(
         rule_id="MC-PAR-001",
         entities=entities,
-        visual_parity_assessment=parity,
+        semantic_pass=parity,
         confidence_score=confidence,
         reasoning_trace=reasoning,
     )
@@ -152,7 +152,7 @@ def run_pipeline(
         track_b = call_live_track_b(image_path, rule_id="MC-PAR-001")
 
     print(f"  Entities: {[e.label for e in track_b.entities]}")
-    print(f"  Visual parity holds: {track_b.visual_parity_assessment}")
+    print(f"  Semantic pass: {track_b.semantic_pass}")
     print(f"  Confidence: {track_b.confidence_score:.2f}")
     print(f"  Reasoning: {track_b.reasoning_trace[:150]}...")
 

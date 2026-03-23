@@ -102,7 +102,7 @@ class TrackBOutput:
     """Semantic pipeline output — judgments with mandatory confidence scores."""
     rule_id: str
     entities: list[DetectedEntity]
-    visual_parity_assessment: bool  # True = parity holds, False = dominance detected
+    semantic_pass: bool  # True = compliant, False = violation detected
     confidence_score: float
     reasoning_trace: str = ""
     rubric_penalties: list[str] = field(default_factory=list)
@@ -323,7 +323,7 @@ def arbitrate(
         return gate_result
 
     # Evaluate Track B result
-    track_b.result = Result.PASS if track_b.visual_parity_assessment else Result.FAIL
+    track_b.result = Result.PASS if track_b.semantic_pass else Result.FAIL
 
     # --- Step 5: Arbitration logic (Block 1 specific) ---
     log_lines = [
@@ -466,7 +466,7 @@ def mock_track_b_clear_fail() -> TrackBOutput:
             DetectedEntity(label="mastercard", bbox=[400, 300, 540, 400]),
             DetectedEntity(label="visa", bbox=[100, 50, 270, 170]),
         ],
-        visual_parity_assessment=False,
+        semantic_pass=False,
         confidence_score=0.93,
         reasoning_trace=(
             "Visa logo occupies center-top position with significantly larger area. "
@@ -495,7 +495,7 @@ def mock_track_b_semantic_fail_high_confidence() -> TrackBOutput:
             DetectedEntity(label="mastercard", bbox=[400, 280, 560, 400]),
             DetectedEntity(label="visa", bbox=[100, 50, 270, 170]),
         ],
-        visual_parity_assessment=False,
+        semantic_pass=False,
         confidence_score=0.91,
         reasoning_trace=(
             "Despite near-equal pixel areas, Visa occupies the primary visual position "
@@ -514,7 +514,7 @@ def mock_track_b_low_confidence() -> TrackBOutput:
             DetectedEntity(label="mastercard", bbox=[400, 280, 560, 400]),
             DetectedEntity(label="visa", bbox=[100, 50, 270, 170]),
         ],
-        visual_parity_assessment=False,
+        semantic_pass=False,
         confidence_score=0.72,
         reasoning_trace=(
             "Image is low resolution and the Mastercard logo appears partially "
@@ -537,7 +537,7 @@ def mock_track_b_entity_mismatch() -> TrackBOutput:
             DetectedEntity(label="visa", bbox=[100, 50, 270, 170]),
             DetectedEntity(label="amex", bbox=[600, 320, 680, 380]),  # YOLO missed this
         ],
-        visual_parity_assessment=False,
+        semantic_pass=False,
         confidence_score=0.88,
         reasoning_trace=(
             "Three payment logos detected. Visa dominates center position. "
@@ -566,7 +566,7 @@ def mock_track_b_both_pass() -> TrackBOutput:
             DetectedEntity(label="mastercard", bbox=[100, 50, 270, 170]),
             DetectedEntity(label="visa", bbox=[350, 50, 520, 170]),
         ],
-        visual_parity_assessment=True,
+        semantic_pass=True,
         confidence_score=0.96,
         reasoning_trace=(
             "Both logos are identically sized and symmetrically placed in a "
