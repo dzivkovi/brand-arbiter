@@ -146,24 +146,39 @@ class ComplianceReport:
 # Rule Catalog — loaded from rules.yaml (the single source of truth)
 # ============================================================================
 
-def load_rule_catalog(path: Path | None = None) -> dict:
-    """Load rule catalog from YAML file.
+def _load_yaml(path: Path | None = None) -> dict:
+    """Load and return the full YAML catalog (defaults + rules).
 
     Default path: rules.yaml at the project root (one level above src/).
     Accepts a custom path for testing.
+    Raises ValueError if the YAML is malformed or missing 'rules'.
     """
     if path is None:
         path = Path(__file__).parent.parent / "rules.yaml"
     with open(path, encoding="utf-8") as f:
-        return yaml.safe_load(f)["rules"]
+        raw = yaml.safe_load(f)
+    if not isinstance(raw, dict) or "rules" not in raw:
+        raise ValueError(
+            f"Invalid rule catalog in {path}: "
+            f"expected a YAML file with a top-level 'rules' key"
+        )
+    return raw
 
 
-RULE_CATALOG = load_rule_catalog()
+def load_rule_catalog(path: Path | None = None) -> dict:
+    """Load rule definitions from YAML. Returns the 'rules' dict."""
+    return _load_yaml(path)["rules"]
+
+
+_CATALOG_RAW = _load_yaml()
+RULE_CATALOG = _CATALOG_RAW["rules"]
 
 # Named constants (Constraint 3: no inline magic numbers)
 PARITY_AREA_THRESHOLD = RULE_CATALOG["MC-PAR-001"]["deterministic_spec"]["threshold"]
 CLEAR_SPACE_THRESHOLD = RULE_CATALOG["MC-CLR-002"]["deterministic_spec"]["threshold"]
-CONFIDENCE_THRESHOLD_DEFAULT = 0.85
+CONFIDENCE_THRESHOLD_DEFAULT = _CATALOG_RAW.get("defaults", {}).get(
+    "confidence_threshold", 0.85
+)
 
 
 # ============================================================================

@@ -23,6 +23,8 @@ import os
 import sys
 from pathlib import Path
 
+import anthropic
+
 from phase1_crucible import (
     AssessmentOutput,
     ComplianceReport,
@@ -217,7 +219,7 @@ def run_pipeline(
                 track_b = mock_track_b_for_scenario(scenario, rule_id=rule_id)
             else:
                 track_b = call_live_track_b(image_path, rule_id=rule_id)
-        except (ValueError, Exception) as e:
+        except (ValueError, anthropic.APIError) as e:
             # LLM returned junk or API failed — escalate, don't guess
             assessment = _build_escalated_assessment(track_a, asset_id, str(e))
             store.record_assessment(assessment)

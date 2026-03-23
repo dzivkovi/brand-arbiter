@@ -6,6 +6,8 @@ and ComplianceReport worst-case aggregation.
 Run: python -m pytest tests/ -v
 """
 
+from unittest.mock import patch
+
 import pytest
 
 from main import run_pipeline, _build_short_circuit_assessment
@@ -121,3 +123,43 @@ class TestComplianceReportWorstCase:
         assert ComplianceReport.worst_case(
             [Result.FAIL]
         ) == Result.FAIL
+
+
+# ============================================================================
+# Track B failure → ESCALATED (the parsing firewall in the pipeline)
+# ============================================================================
+
+class TestPipelineTrackBFailure:
+
+    @patch("main.call_live_track_b", side_effect=ValueError("LLM returned garbage"))
+    def test_track_b_parse_failure_escalates(self, mock_call):
+        """When call_live_track_b raises ValueError, pipeline produces ESCALATED."""
+        # compliant scenario: Track A passes both rules, so Track B IS called
+        report = run_pipeline("compliant", "fake.png", dry_run=False)
+        parity = next(
+            a for a in report.rule_results if a.rule_id == "MC-PAR-001"
+        )
+        assert parity.final_result == Result.ESCALATED
+        assert parity.track_b is None
+        assert any("LLM returned garbage" in r for r in parity.escalation_reasons)
+
+    @patch("main.call_live_track_b", side_effect=ValueError("bad JSON"))
+    def test_track_b_failure_still_has_track_a(self, mock_call):
+        """Escalated assessment must still contain Track A evidence."""
+        report = run_pipeline("compliant", "fake.png", dry_run=False)
+        parity = next(
+            a for a in report.rule_results if a.rule_id == "MC-PAR-001"
+        )
+        assert parity.track_a is not None
+        assert "area_ratio" in parity.track_a
+
+    @patch("main.call_live_track_b", side_effect=ValueError("schema violation"))
+    def test_short_circuit_unaffected_by_track_b_mock(self, mock_call):
+        """Track A FAIL still short-circuits — the mock never fires."""
+        report = run_pipeline("clear_violation", "fake.png", dry_run=False)
+        parity = next(
+            a for a in report.rule_results if a.rule_id == "MC-PAR-001"
+        )
+        assert parity.final_result == Result.FAIL
+        assert parity.track_b is None
+        assert "short-circuit" in parity.arbitration_log.lower()

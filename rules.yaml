@@ -60,6 +60,9 @@
 #
 # ════════════════════════════════════════════════════════════════════
 
+defaults:
+  confidence_threshold: 0.85   # Gatekeeper fallback if a rule omits semantic_spec
+
 rules:
   MC-PAR-001:
     name: "Payment Mark Parity"

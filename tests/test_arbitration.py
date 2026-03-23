@@ -484,3 +484,17 @@ class TestLoadRuleCatalog:
         """Non-existent YAML path raises FileNotFoundError."""
         with pytest.raises(FileNotFoundError):
             load_rule_catalog(tmp_path / "nonexistent.yaml")
+
+    def test_load_malformed_yaml_raises(self, tmp_path):
+        """YAML without 'rules' key raises ValueError with clear message."""
+        bad = tmp_path / "bad.yaml"
+        bad.write_text("not_rules:\n  foo: bar\n")
+        with pytest.raises(ValueError, match="top-level 'rules' key"):
+            load_rule_catalog(bad)
+
+    def test_load_empty_yaml_raises(self, tmp_path):
+        """Empty YAML file raises ValueError."""
+        empty = tmp_path / "empty.yaml"
+        empty.write_text("")
+        with pytest.raises(ValueError, match="top-level 'rules' key"):
+            load_rule_catalog(empty)
