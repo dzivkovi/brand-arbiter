@@ -142,6 +142,18 @@ class ComplianceReport:
         return Result.PASS
 
 
+@dataclass
+class CollisionReport:
+    """Cross-brand rule collision detected via static threshold analysis."""
+    collision_id: str
+    rules_involved: list[str]
+    brands_involved: list[str]
+    reason: str
+    mathematical_proof: str
+    result: Result                  # Always ESCALATED
+    escalation_reason: str          # EscalationReason.CROSS_BRAND_CONFLICT.value
+
+
 # ============================================================================
 # Rule Catalog — loaded from rules.yaml (the single source of truth)
 # ============================================================================
@@ -179,6 +191,110 @@ RULE_CATALOG = _CATALOG_RAW["rules"]
 CONFIDENCE_THRESHOLD_DEFAULT = _CATALOG_RAW.get("defaults", {}).get(
     "confidence_threshold", 0.85
 )
+
+
+# ============================================================================
+# Cross-Brand Collision Detection (Constraint 5: always escalate)
+# ============================================================================
+
+# Inverse metric pairs: if rule A uses metric_a and rule B uses metric_b,
+# they measure reciprocal quantities (a/b vs b/a).
+_INVERSE_METRICS = {
+    ("logo_area_ratio", "brand_dominance_ratio"),
+    ("brand_dominance_ratio", "logo_area_ratio"),
+}
+
+
+def detect_collisions(
+    catalog_raw: dict,
+    active_rules: list[str] | None = None,
+) -> list[CollisionReport]:
+    """Static analysis: detect mutually exclusive rule pairs from YAML thresholds.
+
+    Reads collision_groups from the raw YAML catalog. For each group, checks
+    whether the active rules contain both sides of the collision and whether
+    their thresholds are mathematically incompatible.
+
+    Returns a list of CollisionReport (each with Result.ESCALATED).
+    """
+    groups = catalog_raw.get("collision_groups", [])
+    rules = catalog_raw.get("rules", {})
+    collisions: list[CollisionReport] = []
+
+    for group in groups:
+        group_rule_ids = group["rules"]
+
+        # Skip if referenced rules don't exist in catalog
+        if not all(rid in rules for rid in group_rule_ids):
+            continue
+
+        # Skip if active_rules filter excludes either side
+        if active_rules is not None:
+            if not all(rid in active_rules for rid in group_rule_ids):
+                continue
+
+        # Check mathematical compatibility for each pair
+        for i, rid_a in enumerate(group_rule_ids):
+            for rid_b in group_rule_ids[i + 1:]:
+                proof = _prove_mutual_exclusion(rules[rid_a], rules[rid_b])
+                if proof:
+                    brands = [
+                        rules[rid_a].get("brand", "unknown"),
+                        rules[rid_b].get("brand", "unknown"),
+                    ]
+                    collisions.append(CollisionReport(
+                        collision_id=f"col-{_generate_review_id()}",
+                        rules_involved=[rid_a, rid_b],
+                        brands_involved=brands,
+                        reason=group["reason"],
+                        mathematical_proof=proof,
+                        result=Result.ESCALATED,
+                        escalation_reason=EscalationReason.CROSS_BRAND_CONFLICT.value,
+                    ))
+
+    return collisions
+
+
+def _prove_mutual_exclusion(rule_a: dict, rule_b: dict) -> str | None:
+    """If two rules have inverse metrics with incompatible thresholds, return proof.
+
+    For logo_area_ratio (mc/comp >= T₁) vs brand_dominance_ratio (comp/mc >= T₂):
+      Parity implies comp/mc <= 1/T₁.
+      If 1/T₁ < T₂, constraints are mutually exclusive.
+
+    Returns a human-readable proof string, or None if compatible.
+    """
+    spec_a = rule_a.get("deterministic_spec", {})
+    spec_b = rule_b.get("deterministic_spec", {})
+    metric_a = spec_a.get("metric")
+    metric_b = spec_b.get("metric")
+    threshold_a = spec_a.get("threshold")
+    threshold_b = spec_b.get("threshold")
+
+    if not all([metric_a, metric_b, threshold_a, threshold_b]):
+        return None
+
+    pair = (metric_a, metric_b)
+    if pair not in _INVERSE_METRICS:
+        return None
+
+    # Determine which is the "parity" side (logo_area_ratio) and which is "dominance"
+    if metric_a == "logo_area_ratio":
+        t_parity, t_dominance = threshold_a, threshold_b
+    else:
+        t_parity, t_dominance = threshold_b, threshold_a
+
+    implied_max = 1.0 / t_parity
+    if implied_max < t_dominance:
+        return (
+            f"Parity requires mc/comp >= {t_parity} "
+            f"(implies comp/mc <= 1/{t_parity} = {implied_max:.4f}). "
+            f"Dominance requires comp/mc >= {t_dominance}. "
+            f"Since {implied_max:.4f} < {t_dominance}, "
+            f"no image can satisfy both constraints."
+        )
+
+    return None
 
 
 # ============================================================================
