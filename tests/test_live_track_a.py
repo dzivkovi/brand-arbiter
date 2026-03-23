@@ -7,8 +7,8 @@ Run: python -m pytest tests/ -v
 
 import pytest
 
-from live_track_a import evaluate_track_a, compute_area
-from phase1_crucible import DetectedEntity, Result, PARITY_AREA_THRESHOLD
+from live_track_a import evaluate_track_a, compute_area, compute_min_edge_distance
+from phase1_crucible import DetectedEntity, Result, PARITY_AREA_THRESHOLD, CLEAR_SPACE_THRESHOLD
 
 
 # ============================================================================
@@ -166,3 +166,122 @@ class TestEdgeCases:
         ]
         result = evaluate_track_a(entities)
         assert "10000" in result.evidence
+
+
+# ============================================================================
+# Edge distance computation
+# ============================================================================
+
+class TestComputeMinEdgeDistance:
+
+    def test_non_overlapping_horizontal(self):
+        """Boxes separated horizontally by 50px gap."""
+        assert compute_min_edge_distance([0, 0, 100, 100], [150, 0, 250, 100]) == 50
+
+    def test_non_overlapping_vertical(self):
+        """Boxes separated vertically by 30px gap."""
+        assert compute_min_edge_distance([0, 0, 100, 100], [0, 130, 100, 230]) == 30
+
+    def test_overlapping_returns_zero(self):
+        """Overlapping boxes → distance 0."""
+        assert compute_min_edge_distance([0, 0, 100, 100], [50, 50, 150, 150]) == 0
+
+    def test_adjacent_returns_zero(self):
+        """Touching boxes → distance 0."""
+        assert compute_min_edge_distance([0, 0, 100, 100], [100, 0, 200, 100]) == 0
+
+    def test_diagonal_gap(self):
+        """Boxes separated diagonally — returns minimum of dx and dy."""
+        # dx = 20, dy = 30 → min = 20
+        assert compute_min_edge_distance([0, 0, 100, 100], [120, 130, 220, 230]) == 20
+
+
+# ============================================================================
+# Clear Space evaluation (MC-CLR-002)
+# ============================================================================
+
+class TestEvaluateTrackAClearSpace:
+
+    def test_sufficient_clearspace_pass(self):
+        """Gap of 30px with MC width 100 → ratio 0.30 >= 0.25 → PASS."""
+        entities = [
+            DetectedEntity(label="mastercard", bbox=[0, 0, 100, 100]),
+            DetectedEntity(label="visa", bbox=[130, 0, 230, 100]),
+        ]
+        result = evaluate_track_a(entities, rule_id="MC-CLR-002")
+        assert result.result == Result.PASS
+        assert result.clear_space_ratio == pytest.approx(0.30)
+
+    def test_insufficient_clearspace_fail(self):
+        """Gap of 10px with MC width 100 → ratio 0.10 < 0.25 → FAIL."""
+        entities = [
+            DetectedEntity(label="mastercard", bbox=[0, 0, 100, 100]),
+            DetectedEntity(label="visa", bbox=[110, 0, 210, 100]),
+        ]
+        result = evaluate_track_a(entities, rule_id="MC-CLR-002")
+        assert result.result == Result.FAIL
+        assert result.clear_space_ratio == pytest.approx(0.10)
+
+    def test_at_threshold_pass(self):
+        """Exactly at 0.25 threshold → PASS (>= comparison)."""
+        entities = [
+            DetectedEntity(label="mastercard", bbox=[0, 0, 100, 100]),
+            DetectedEntity(label="visa", bbox=[125, 0, 225, 100]),
+        ]
+        result = evaluate_track_a(entities, rule_id="MC-CLR-002")
+        assert result.result == Result.PASS
+        assert result.clear_space_ratio == pytest.approx(0.25)
+
+    def test_just_below_threshold_fail(self):
+        """Gap of 24px with MC width 100 → ratio 0.24 < 0.25 → FAIL."""
+        entities = [
+            DetectedEntity(label="mastercard", bbox=[0, 0, 100, 100]),
+            DetectedEntity(label="visa", bbox=[124, 0, 224, 100]),
+        ]
+        result = evaluate_track_a(entities, rule_id="MC-CLR-002")
+        assert result.result == Result.FAIL
+        assert result.clear_space_ratio == pytest.approx(0.24)
+
+    def test_no_entities_fail(self):
+        result = evaluate_track_a([], rule_id="MC-CLR-002")
+        assert result.result == Result.FAIL
+        assert result.clear_space_ratio is None
+
+    def test_no_mastercard_fail(self):
+        entities = [DetectedEntity(label="visa", bbox=[0, 0, 100, 100])]
+        result = evaluate_track_a(entities, rule_id="MC-CLR-002")
+        assert result.result == Result.FAIL
+
+    def test_no_competitors_fail(self):
+        entities = [DetectedEntity(label="mastercard", bbox=[0, 0, 100, 100])]
+        result = evaluate_track_a(entities, rule_id="MC-CLR-002")
+        assert result.result == Result.FAIL
+
+    def test_multiple_competitors_uses_nearest(self):
+        """With multiple competitors, uses the NEAREST (not furthest)."""
+        entities = [
+            DetectedEntity(label="mastercard", bbox=[0, 0, 100, 100]),
+            DetectedEntity(label="visa", bbox=[110, 0, 210, 100]),       # gap = 10
+            DetectedEntity(label="amex", bbox=[300, 0, 400, 100]),       # gap = 200
+        ]
+        result = evaluate_track_a(entities, rule_id="MC-CLR-002")
+        assert result.result == Result.FAIL
+        assert result.clear_space_ratio == pytest.approx(0.10)  # uses nearest (Visa)
+
+    def test_output_has_correct_rule_id(self):
+        entities = [
+            DetectedEntity(label="mastercard", bbox=[0, 0, 100, 100]),
+            DetectedEntity(label="visa", bbox=[130, 0, 230, 100]),
+        ]
+        result = evaluate_track_a(entities, rule_id="MC-CLR-002")
+        assert result.rule_id == "MC-CLR-002"
+
+    def test_evidence_contains_measurements(self):
+        """Evidence string must include gap and width measurements."""
+        entities = [
+            DetectedEntity(label="mastercard", bbox=[0, 0, 100, 100]),
+            DetectedEntity(label="visa", bbox=[130, 0, 230, 100]),
+        ]
+        result = evaluate_track_a(entities, rule_id="MC-CLR-002")
+        assert "100" in result.evidence  # MC width
+        assert "30" in result.evidence   # gap
