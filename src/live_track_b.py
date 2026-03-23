@@ -160,9 +160,54 @@ You MUST respond with ONLY the following JSON object. No markdown, no backticks,
 }"""
 
 
+DOMINANCE_EVALUATION_PROMPT = """You are a brand compliance auditor. Evaluate whether the SUBJECT brand has
+adequate visual dominance over the REFERENCE brand in a co-branded marketing asset.
+
+## Step 1: Entity Detection
+Identify all brand logos in the image. For each, note:
+- Label (exact brand name, lowercase)
+- Bounding box [x1, y1, x2, y2] in pixels
+- Visibility (fully_visible / partially_occluded / barely_visible)
+
+## Step 2: Visual Dominance Assessment
+Assess whether the subject brand (Barclays) is visually dominant over the
+reference brand (Mastercard). Consider:
+- Relative logo size (Barclays should be noticeably larger)
+- Placement hierarchy (Barclays in more prominent position)
+- Visual weight (color contrast, spacing)
+
+BRAND_DOMINANCE: true means the subject brand is clearly dominant (PASS).
+BRAND_DOMINANCE: false means the subject brand is NOT dominant enough (FAIL).
+
+## Step 3: Confidence Scoring (MANDATORY RUBRIC — Constraint 6)
+Start at 1.00, then subtract:
+  - Occlusion/cropping of either logo: -0.30
+  - Low resolution (<300px on either logo): -0.20
+  - Complex/textured backgrounds: -0.15
+  - More than 3 brand logos present: -0.10
+  - Watermarks or semi-transparent overlays: -0.25
+  - Ambiguous placement hierarchy: -0.05
+  Minimum confidence: 0.10
+
+Return ONLY this JSON (no commentary):
+{
+  "entities": [
+    {"label": "barclays", "bbox": [x1, y1, x2, y2], "visibility": "fully_visible"},
+    {"label": "mastercard", "bbox": [x1, y1, x2, y2], "visibility": "fully_visible"}
+  ],
+  "reasoning_trace": "Step-by-step reasoning here...",
+  "semantic_pass": true or false,  // true = subject brand is dominant (PASS), false = not dominant (FAIL)
+  "rubric_penalties": [
+    "Description of penalty: -0.XX"
+  ],
+  "confidence_score": 0.XX
+}"""
+
+
 RULE_PROMPTS = {
     "MC-PAR-001": PARITY_EVALUATION_PROMPT,
     "MC-CLR-002": CLEAR_SPACE_EVALUATION_PROMPT,
+    "BC-DOM-001": DOMINANCE_EVALUATION_PROMPT,
 }
 
 
@@ -410,6 +455,18 @@ MOCK_TRACK_A_SCENARIOS = {
             DetectedEntity(label="visa", bbox=[230, 100, 330, 200]),        # gap = 30px
         ],
     ),
+    # --- Co-Brand scenario: Barclays + Mastercard ---
+    # Barclays 20% larger: MC 200×100=20000, BC 240×100=24000
+    # area_ratio (mc/bc) = 20000/24000 ≈ 0.833 → MC-PAR-001 FAIL
+    # dominance_ratio (bc/mc) = 24000/20000 = 1.20 → BC-DOM-001 PASS
+    # Collision: these two results prove the SOP collision
+    "barclays_cobrand": TrackAOutput(
+        rule_id="MC-PAR-001",
+        entities=[
+            DetectedEntity(label="mastercard", bbox=[100, 50, 300, 150]),   # 200×100 = 20000
+            DetectedEntity(label="barclays", bbox=[350, 50, 590, 150]),     # 240×100 = 24000
+        ],
+    ),
 }
 
 # Map scenario names to test image files
@@ -421,6 +478,7 @@ SCENARIO_IMAGES = {
     "low_res": "../test_assets/parity_low_res_occluded.png",
     "clear_space_violation": "../test_assets/clearspace_violation.png",
     "clear_space_compliant": "../test_assets/clearspace_compliant.png",
+    "barclays_cobrand": "../test_assets/barclays_cobrand.png",
 }
 
 SCENARIO_EXPECTED = {
@@ -431,6 +489,7 @@ SCENARIO_EXPECTED = {
     "low_res": Result.ESCALATED,  # Entity mismatch — Claude may miss occluded MC logo
     "clear_space_violation": Result.FAIL,  # Track A short-circuit — too close
     "clear_space_compliant": Result.PASS,  # Both tracks agree — adequate space
+    "barclays_cobrand": Result.ESCALATED,  # SOP collision: MC-PAR-001 + BC-DOM-001 mutually exclusive
 }
 
 

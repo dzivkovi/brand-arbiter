@@ -71,6 +71,7 @@ def mock_track_b_for_scenario(scenario: str, rule_id: str = "MC-PAR-001"):
         "three_logos": (False, 0.88, "Three logos detected. Visa is largest, MC smallest."),
         "three_logos_full": (False, 0.88, "Three logos detected. MC slightly smaller than competitors."),
         "low_res": (False, 0.72, "Low resolution image, logos partially occluded."),
+        "barclays_cobrand": (False, 0.93, "Barclays logo is noticeably larger — Mastercard lacks parity."),
     }
 
     # Clear-space-focused mocks
@@ -81,7 +82,14 @@ def mock_track_b_for_scenario(scenario: str, rule_id: str = "MC-PAR-001"):
         "hard_case": (True, 0.90, "Logos have reasonable spacing."),
     }
 
-    if rule_id == "MC-CLR-002":
+    # Dominance-focused mocks (Barclays co-brand)
+    dominance_map = {
+        "barclays_cobrand": (True, 0.94, "Barclays logo is clearly larger and in prominent position."),
+    }
+
+    if rule_id == "BC-DOM-001":
+        entity_map = dominance_map
+    elif rule_id == "MC-CLR-002":
         entity_map = clearspace_map
     else:
         entity_map = parity_map
@@ -292,6 +300,11 @@ Examples:
         action="store_true",
         help="Skip the Claude API call; use mock Track B output instead",
     )
+    parser.add_argument(
+        "--cobrand",
+        action="store_true",
+        help="Include Barclays co-brand rules (BC-DOM-001) in evaluation",
+    )
     args = parser.parse_args()
 
     # Default to --scenario hard_case if nothing specified
@@ -320,6 +333,11 @@ Examples:
 
     store = LearningStore()
 
+    # Build active rule set
+    active_rules = list(ACTIVE_RULES)
+    if args.cobrand:
+        active_rules.append("BC-DOM-001")
+
     # Resolve scenarios to run
     if args.scenario == "all":
         scenarios = [(s, SCENARIO_IMAGES[s]) for s in SCENARIO_IMAGES]
@@ -333,6 +351,7 @@ Examples:
             report = run_pipeline(
                 scenario, image_path,
                 dry_run=args.dry_run, store=store,
+                rule_ids=active_rules,
             )
             results.append((scenario, report))
         except Exception as e:
@@ -381,7 +400,7 @@ Examples:
 
     # Learning loop footer
     print(f"\n{'='*70}")
-    for rule_id in ACTIVE_RULES:
+    for rule_id in active_rules:
         rate = store.override_rate(rule_id)
         print(f"  {rule_id}: "
               f"{rate['total_assessments']} assessments, "

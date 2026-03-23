@@ -276,3 +276,35 @@ class TestPipelineCollisionDetection:
         )
         assert "mastercard" in report.brand_results
         assert len(report.brand_results["mastercard"]) == 2
+
+    def test_cobrand_detects_collision(self):
+        """barclays_cobrand with both brands → collision detected."""
+        report = run_pipeline(
+            "barclays_cobrand", "fake.png", dry_run=True,
+            rule_ids=["MC-PAR-001", "MC-CLR-002", "BC-DOM-001"],
+        )
+        assert len(report.collisions) == 1
+        assert "MC-PAR-001" in report.collisions[0].rules_involved
+        assert "BC-DOM-001" in report.collisions[0].rules_involved
+
+    def test_cobrand_preserves_individual_results(self):
+        """Collision doesn't mask per-rule verdicts."""
+        report = run_pipeline(
+            "barclays_cobrand", "fake.png", dry_run=True,
+            rule_ids=["MC-PAR-001", "BC-DOM-001"],
+        )
+        mc_par = next(a for a in report.rule_results if a.rule_id == "MC-PAR-001")
+        bc_dom = next(a for a in report.rule_results if a.rule_id == "BC-DOM-001")
+        # MC fails parity (area_ratio 0.833 < 0.95)
+        assert mc_par.final_result == Result.FAIL
+        # BC passes dominance (ratio 1.20 >= 1.20)
+        assert bc_dom.final_result == Result.PASS
+
+    def test_cobrand_brand_grouping(self):
+        """Cobrand report groups by mastercard and barclays."""
+        report = run_pipeline(
+            "barclays_cobrand", "fake.png", dry_run=True,
+            rule_ids=["MC-PAR-001", "BC-DOM-001"],
+        )
+        assert "mastercard" in report.brand_results
+        assert "barclays" in report.brand_results
