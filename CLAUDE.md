@@ -32,6 +32,7 @@ Runs 5 mocked end-to-end scenarios proving the full pipeline (Arbitrator, Gateke
 ```bash
 cd src && python main.py --scenario hard_case --dry-run
 cd src && python main.py --scenario all --dry-run
+cd src && python main.py --scenario barclays_cobrand --cobrand --dry-run
 ```
 
 ### Run integrated pipeline — live (requires ANTHROPIC_API_KEY)
@@ -55,6 +56,7 @@ The system processes brand compliance rules through a dual-track pipeline:
 - **Track A (Deterministic):** YOLO object detection + OpenCV measurements → hard PASS/FAIL based on pixel math (e.g., logo area ratios). Currently mocked in Phase 1; YOLO/OpenCV planned for Phase 3.
 - **Track B (Semantic):** Claude Vision API with a structured confidence rubric → confidence-gated PASS/FAIL/ESCALATED. Live in Phase 2 via `live_track_b.py`.
 - **Arbitrator:** Merges both tracks for hybrid rules. Execution order is strict: Entity Reconciliation → Track A evaluation → **Deterministic Short-Circuit** (if Track A FAIL, return immediately — math overrides vibes, Gatekeeper bypassed) → Gatekeeper → Arbitration logic. When Track A says PASS but Track B says FAIL, the result is ESCALATED (never a false-confidence PASS).
+- **Collision Detector:** Static YAML analysis at pipeline startup. Detects mathematically mutually exclusive rules across brand namespaces (e.g., MC-PAR-001 vs BC-DOM-001). Runs before Track A/B — fail fast on structural incompatibility. Collision results are `ESCALATED` with `CROSS_BRAND_CONFLICT` reason but individual rule results are preserved for evidence.
 
 ### Key components in `src/phase1_crucible.py`
 All domain types, the arbitration engine, and test harness live in one file:
@@ -63,10 +65,12 @@ All domain types, the arbitration engine, and test harness live in one file:
 - `gatekeeper()`: Blocks low-confidence Track B results before they reach arbitration
 - `reconcile_entities()`: Ensures both tracks detected the same entities before comparison
 - `LearningStore`: Records assessments and human overrides; tracks override rates for recalibration signals
+- `CollisionReport`: Cross-brand rule collision with mathematical proof
+- `detect_collisions()`: Static analysis — proves mutual exclusion from YAML thresholds (e.g., `1/0.95 = 1.053 < 1.20`)
 
 ### Key components in `src/live_track_a.py`
 
-- `evaluate_track_a()`: Routes by `rule_id` — parity (area ratio) or clear space (edge distance)
+- `evaluate_track_a()`: Routes by `rule_id` — parity (area ratio), clear space (edge distance), or brand dominance (subject/reference ratio)
 - `compute_min_edge_distance()`: Calculates pixel gap between two bounding boxes
 
 ### Key components in `src/live_track_b.py`
@@ -93,7 +97,7 @@ Four rule types, each handled differently:
 | Semantic | Track B only | Read-through (logo used as letter) |
 | Regex | OCR + regex | Lettercase ("Mastercard" not "MasterCard") |
 
-Currently implemented: `MC-PAR-001` (Payment Mark Parity, hybrid) and `MC-CLR-002` (Clear Space, hybrid).
+Currently implemented: `MC-PAR-001` (Payment Mark Parity, hybrid), `MC-CLR-002` (Clear Space, hybrid), and `BC-DOM-001` (Barclays Brand Dominance, hybrid). MC-PAR-001 and BC-DOM-001 form a collision group — mathematically mutually exclusive on any co-branded asset.
 
 ## Safety Constraints
 
@@ -114,6 +118,7 @@ These are architectural invariants, not guidelines:
 | Phase 2: Live semantic pipeline (Claude Vision) | Complete (strict parsing firewall) |
 | Phase 3: Multi-rule orchestration (MC-CLR-002) | Complete (100 tests) |
 | Phase 4: Integrated pipeline (`main.py`) | Complete (dry-run + live modes) |
+| v1.2.0: Co-Brand SOP Collisions | Complete (static YAML collision detection, 145 tests) |
 | Phase 5: Live deterministic pipeline (YOLO + OpenCV) | Not started |
 | Phase 6: Real asset testing | Not started |
 
