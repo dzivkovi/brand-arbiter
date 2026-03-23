@@ -115,15 +115,20 @@ These are architectural invariants, not guidelines:
 
 ## Project Phases
 
-| Phase | Status |
-|-------|--------|
-| Phase 1: Mocked dual-track arbitration | Complete (5/5 tests) |
-| Phase 2: Live semantic pipeline (Claude Vision) | Complete (strict parsing firewall) |
-| Phase 3: Multi-rule orchestration (MC-CLR-002) | Complete (100 tests) |
-| Phase 4: Integrated pipeline (`main.py`) | Complete (dry-run + live modes) |
-| v1.2.0: Co-Brand SOP Collisions | Complete (static YAML collision detection, 145 tests) |
-| Phase 5: Live deterministic pipeline (YOLO + OpenCV) | Not started |
-| Phase 6: Real asset testing | Not started |
+> Full roadmap: `specs/brand-compliance-confidence-sketch.md`, Section 6.
+
+| Spec Phase | What | Status |
+|------------|------|--------|
+| Phase 1: The Crucible | Parity + Arbitration (mocked dual-track) | Complete |
+| Phase 2: The Geometry | Clear Space (pure math) | Complete (deterministic only) |
+| Phase 3: The Semantic | Read-Through detection | Not started |
+| Phase 4: The Baseline | Lettercase (OCR + regex) | Not started |
+| Phase 5: The Co-Brand Conflict | Cross-brand SOP collisions (v1.2.0) | Complete (145 tests) |
+| Phase 6: The Learning Loop | Human overrides + recalibration | Partial (store works, no UI) |
+| — | Live Track A (YOLO + OpenCV) | Not started |
+| — | Real asset testing | Not started |
+
+Note: "Live Track A" and "Real asset testing" are infrastructure milestones that cut across phases, not spec phases themselves. The current pipeline uses mocked bounding boxes for Track A; YOLO/OpenCV replaces the mocks.
 
 ## Documentation
 
