@@ -27,9 +27,12 @@ from pathlib import Path
 
 from phase1_crucible import (
     AssessmentOutput,
+    ComplianceReport,
     LearningStore,
+    Result,
     RULE_CATALOG,
     arbitrate,
+    _now,
 )
 from live_track_a import evaluate_track_a
 from live_track_b import (
@@ -40,6 +43,9 @@ from live_track_b import (
 )
 
 
+# Rules to evaluate for every image
+ACTIVE_RULES = ["MC-PAR-001", "MC-CLR-002"]
+
 # Map image filenames back to scenario names (for --image lookups)
 IMAGE_TO_SCENARIO = {Path(v).name: k for k, v in SCENARIO_IMAGES.items()}
 
@@ -48,11 +54,12 @@ IMAGE_TO_SCENARIO = {Path(v).name: k for k, v in SCENARIO_IMAGES.items()}
 # Mock Track B (for --dry-run without API key)
 # ============================================================================
 
-def mock_track_b_for_scenario(scenario: str):
+def mock_track_b_for_scenario(scenario: str, rule_id: str = "MC-PAR-001"):
     """Return a plausible mocked Track B output for dry-run mode."""
     from phase1_crucible import TrackBOutput
 
-    entity_map = {
+    # Parity-focused mocks
+    parity_map = {
         "clear_violation": (False, 0.95, "Visa clearly dominates — much larger, prime position."),
         "hard_case": (False, 0.91, "Near-equal pixel areas but Visa has prime center-top placement."),
         "compliant": (True, 0.96, "Both logos equally sized and symmetrically placed."),
@@ -61,16 +68,29 @@ def mock_track_b_for_scenario(scenario: str):
         "low_res": (False, 0.72, "Low resolution image, logos partially occluded."),
     }
 
-    parity, confidence, reasoning = entity_map.get(
+    # Clear-space-focused mocks
+    clearspace_map = {
+        "clear_space_violation": (False, 0.93, "MC logo is crowded — competitor logo only 10px away."),
+        "clear_space_compliant": (True, 0.95, "MC logo has adequate breathing room, 30px gap."),
+        "compliant": (True, 0.95, "Logos well-spaced with adequate clear space."),
+        "hard_case": (True, 0.90, "Logos have reasonable spacing."),
+    }
+
+    if rule_id == "MC-CLR-002":
+        entity_map = clearspace_map
+    else:
+        entity_map = parity_map
+
+    semantic_pass, confidence, reasoning = entity_map.get(
         scenario, (False, 0.80, "Unknown scenario — default mock.")
     )
 
     mock = MOCK_TRACK_A_SCENARIOS.get(scenario)
-    entities = list(mock.entities) if mock else []  # copy to avoid mutation
+    entities = list(mock.entities) if mock else []
     return TrackBOutput(
-        rule_id="MC-PAR-001",
+        rule_id=rule_id,
         entities=entities,
-        semantic_pass=parity,
+        semantic_pass=semantic_pass,
         confidence_score=confidence,
         reasoning_trace=reasoning,
     )
@@ -113,68 +133,78 @@ def run_pipeline(
     image_path: str,
     dry_run: bool = False,
     store: LearningStore | None = None,
-) -> AssessmentOutput:
+    rule_ids: list[str] | None = None,
+) -> ComplianceReport:
     """
-    Execute the full dual-track pipeline for one scenario:
-      1. Live Track A: compute area_ratio from bounding boxes
-      2. Live Track B: Claude Vision API (or mock in dry-run)
-      3. Arbitrator: merge results
+    Execute the full dual-track pipeline for one scenario across all rules.
+    Returns a ComplianceReport with per-rule AssessmentOutputs.
     """
     if store is None:
         store = LearningStore()
+    if rule_ids is None:
+        rule_ids = ACTIVE_RULES
 
     mock = MOCK_TRACK_A_SCENARIOS.get(scenario)
     if mock is None:
         raise ValueError(f"No mock data for scenario: {scenario}")
     entities = mock.entities
 
-    expected = SCENARIO_EXPECTED.get(scenario)
-
     print(f"\n{'='*70}")
-    print(f"PIPELINE: {scenario}")
+    print(f"PIPELINE: {scenario} ({len(rule_ids)} rules)")
     print(f"{'='*70}")
     print(f"  Image: {image_path}")
 
-    # --- Track A: Deterministic (live math, mock bboxes) ---
-    print("\n  --- Track A (Deterministic) ---")
-    track_a = evaluate_track_a(list(entities), rule_id="MC-PAR-001")
-    print(f"  Entities: {[e.label for e in track_a.entities]}")
-    print(f"  Area ratio: {track_a.area_ratio}")
-    print(f"  Result: {track_a.result.value if track_a.result else 'N/A'}")
-    print(f"  Evidence: {track_a.evidence}")
+    rule_results = []
+    for rule_id in rule_ids:
+        print(f"\n  --- Rule: {rule_id} ---")
 
-    # --- Track B: Semantic (live API or mock) ---
-    print(f"\n  --- Track B (Semantic{'— DRY RUN' if dry_run else ''}) ---")
-    if dry_run:
-        track_b = mock_track_b_for_scenario(scenario)
-        print("  [DRY RUN] Using mock Track B output")
-    else:
-        track_b = call_live_track_b(image_path, rule_id="MC-PAR-001")
+        # --- Track A: Deterministic ---
+        track_a = evaluate_track_a(
+            list(entities), rule_id=rule_id
+        )
+        print(f"  Track A: {track_a.result.value if track_a.result else 'N/A'}"
+              f" | {track_a.evidence}")
 
-    print(f"  Entities: {[e.label for e in track_b.entities]}")
-    print(f"  Semantic pass: {track_b.semantic_pass}")
-    print(f"  Confidence: {track_b.confidence_score:.2f}")
-    print(f"  Reasoning: {track_b.reasoning_trace[:150]}...")
+        # --- Track B: Semantic ---
+        if dry_run:
+            track_b = mock_track_b_for_scenario(
+                scenario, rule_id=rule_id
+            )
+            print("  Track B: [DRY RUN] mock")
+        else:
+            track_b = call_live_track_b(
+                image_path, rule_id=rule_id
+            )
+        print(f"  Track B: semantic_pass={track_b.semantic_pass}"
+              f" confidence={track_b.confidence_score:.2f}")
 
-    # --- Arbitrator ---
-    print("\n  --- Arbitration ---")
-    rule_config = RULE_CATALOG[track_a.rule_id]
-    result = arbitrate(track_a, track_b, rule_config, asset_id=f"pipeline-{scenario}")
-    store.record_assessment(result)
+        # --- Arbitrator ---
+        rule_config = RULE_CATALOG[rule_id]
+        assessment = arbitrate(
+            track_a, track_b, rule_config,
+            asset_id=f"pipeline-{scenario}",
+        )
+        store.record_assessment(assessment)
+        rule_results.append(assessment)
 
-    status = ""
-    if expected:
-        passed = result.final_result == expected
-        status = f" {'✅' if passed else '❌'} (expected {expected.value})"
+        print(f"  Result: {assessment.final_result.value}")
+        if assessment.escalation_reasons:
+            for r in assessment.escalation_reasons:
+                print(f"    → {r}")
 
-    print(f"  Final result: {result.final_result.value}{status}")
-    if result.escalation_reasons:
-        for r in result.escalation_reasons:
-            print(f"    → {r}")
-    print(f"  Arbitration log: {result.arbitration_log}")
-    print(f"  Review ID: {result.review_id}")
+    # Build ComplianceReport
+    overall = ComplianceReport.worst_case(
+        [a.final_result for a in rule_results]
+    )
+    report = ComplianceReport(
+        asset_id=f"pipeline-{scenario}",
+        timestamp=_now(),
+        rule_results=rule_results,
+        overall_result=overall,
+    )
 
-    return result
+    print(f"\n  OVERALL: {report.overall_result.value}")
+    return report
 
 
 # ============================================================================
@@ -247,41 +277,54 @@ Examples:
     results = []
     for scenario, image_path in scenarios:
         try:
-            result = run_pipeline(scenario, image_path, dry_run=args.dry_run, store=store)
-            results.append((scenario, result))
+            report = run_pipeline(
+                scenario, image_path,
+                dry_run=args.dry_run, store=store,
+            )
+            results.append((scenario, report))
         except Exception as e:
             print(f"\n  ❌ Scenario '{scenario}' failed: {e}")
             results.append((scenario, None))
 
     # --- Summary ---
     print(f"\n{'='*70}")
-    print("SUMMARY")
+    print("COMPLIANCE REPORT SUMMARY")
     print(f"{'='*70}")
-    for scenario, result in results:
-        expected = SCENARIO_EXPECTED.get(scenario)
-        if result is None:
+    for scenario, report in results:
+        if report is None:
             print(f"  {scenario}: ❌ ERROR")
-        elif expected and result.final_result == expected:
-            print(f"  {scenario}: ✅ {result.final_result.value} (expected {expected.value})")
-        elif expected:
-            print(f"  {scenario}: ⚠️  {result.final_result.value} (expected {expected.value})")
-        else:
-            print(f"  {scenario}: {result.final_result.value}")
+            continue
+
+        print(f"  {scenario}: {report.overall_result.value}")
+        for assessment in report.rule_results:
+            expected = SCENARIO_EXPECTED.get(scenario)
+            status = ""
+            if expected:
+                match = assessment.final_result == expected
+                status = f" {'✅' if match else '⚠️'}"
+            print(f"    {assessment.rule_id}: "
+                  f"{assessment.final_result.value}{status}")
 
     # Learning loop stats
-    rate = store.override_rate("MC-PAR-001")
-    print(f"\n  Learning Loop — MC-PAR-001: "
-          f"{rate['total_assessments']} assessments, "
-          f"{rate['total_overrides']} overrides")
+    for rule_id in ACTIVE_RULES:
+        rate = store.override_rate(rule_id)
+        print(f"\n  Learning Loop — {rule_id}: "
+              f"{rate['total_assessments']} assessments, "
+              f"{rate['total_overrides']} overrides")
 
     # Dump JSON for hard_case if present
-    hard = [r for s, r in results if s == "hard_case" and r is not None]
+    hard = [r for s, r in results
+            if s == "hard_case" and r is not None]
     if hard:
         print(f"\n{'='*70}")
         print("FULL OUTPUT: hard_case")
         print(f"{'='*70}")
         output = asdict(hard[0])
-        output["final_result"] = hard[0].final_result.value
+        output["overall_result"] = hard[0].overall_result.value
+        for i, a in enumerate(hard[0].rule_results):
+            output["rule_results"][i]["final_result"] = (
+                a.final_result.value
+            )
         print(json.dumps(output, indent=2, default=str))
 
 
