@@ -16,9 +16,11 @@ Date: March 21, 2026
 
 import json
 import uuid
+import yaml
 from datetime import datetime, timezone
 from dataclasses import dataclass, field, asdict
 from enum import Enum
+from pathlib import Path
 from typing import Optional
 
 
@@ -141,37 +143,22 @@ class ComplianceReport:
 
 
 # ============================================================================
-# Rule Catalog (simplified for Phase 1)
+# Rule Catalog — loaded from rules.yaml (the single source of truth)
 # ============================================================================
 
-RULE_CATALOG = {
-    "MC-PAR-001": {
-        "name": "Payment Mark Parity",
-        "type": "hybrid",
-        "block": 1,
-        "deterministic_spec": {
-            "metric": "logo_area_ratio",
-            "operator": ">=",
-            "threshold": 0.95,  # Named constant, not magic number
-        },
-        "semantic_spec": {
-            "confidence_threshold": 0.85,  # System default
-        },
-    },
-    "MC-CLR-002": {
-        "name": "Clear Space",
-        "type": "hybrid",
-        "block": 1,
-        "deterministic_spec": {
-            "metric": "clear_space_ratio",
-            "operator": ">=",
-            "threshold": 0.25,  # 25% of MC logo width
-        },
-        "semantic_spec": {
-            "confidence_threshold": 0.85,
-        },
-    },
-}
+def load_rule_catalog(path: Path | None = None) -> dict:
+    """Load rule catalog from YAML file.
+
+    Default path: rules.yaml at the project root (one level above src/).
+    Accepts a custom path for testing.
+    """
+    if path is None:
+        path = Path(__file__).parent.parent / "rules.yaml"
+    with open(path) as f:
+        return yaml.safe_load(f)["rules"]
+
+
+RULE_CATALOG = load_rule_catalog()
 
 # Named constants (Constraint 3: no inline magic numbers)
 PARITY_AREA_THRESHOLD = RULE_CATALOG["MC-PAR-001"]["deterministic_spec"]["threshold"]

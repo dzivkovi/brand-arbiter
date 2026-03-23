@@ -1,0 +1,33 @@
+# Brand Arbiter — Rule Catalog
+# ============================
+# This file is the single source of truth for brand compliance rules.
+# The engine reads this at startup. To change a threshold or add a rule,
+# edit this file — no Python code changes needed.
+#
+# Rule types:
+#   hybrid        — Track A (math) + Track B (AI) -> Arbitrator
+#   deterministic — Track A only (math is authoritative)
+#   semantic      — Track B only (AI judgment)
+
+rules:
+  MC-PAR-001:
+    name: "Payment Mark Parity"
+    type: hybrid
+    block: 1
+    deterministic_spec:
+      metric: logo_area_ratio
+      operator: ">="
+      threshold: 0.95
+    semantic_spec:
+      confidence_threshold: 0.85
+
+  MC-CLR-002:
+    name: "Clear Space"
+    type: hybrid
+    block: 1
+    deterministic_spec:
+      metric: clear_space_ratio
+      operator: ">="
+      threshold: 0.25
+    semantic_spec:
+      confidence_threshold: 0.85

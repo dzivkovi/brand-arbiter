@@ -1,5 +1,8 @@
 # Phase 1: No external dependencies (pure Python)
 
+# Core engine
+PyYAML>=6.0
+
 # Phase 2: Live semantic pipeline
 anthropic>=0.40.0
 Pillow>=10.0.0
