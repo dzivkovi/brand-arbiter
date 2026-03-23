@@ -18,8 +18,7 @@ from phase1_crucible import (
     TrackAOutput,
     DetectedEntity,
     Result,
-    PARITY_AREA_THRESHOLD,
-    CLEAR_SPACE_THRESHOLD,
+    RULE_CATALOG,
     _edge_distance,
 )
 
@@ -41,17 +40,22 @@ def compute_min_edge_distance(mc_bbox: list[int], comp_bbox: list[int]) -> int:
 def evaluate_track_a(
     entities: list[DetectedEntity],
     rule_id: str = "MC-PAR-001",
+    rule_config: dict | None = None,
 ) -> TrackAOutput:
     """
     Deterministic evaluation from bounding boxes, dispatched by rule_id.
 
-    Constructs a TrackAOutput (whose __post_init__ computes both area_ratio
-    and clear_space_ratio from entity geometry), then evaluates PASS/FAIL
-    against the appropriate named threshold.
+    Reads the threshold from rule_config["deterministic_spec"]["threshold"]
+    so the engine never hardcodes rule-specific values.
 
-    Missing data is a strict FAIL — missing the primary brand logo is a
-    mathematical failure, not an ambiguity.
+    If rule_config is not provided, falls back to RULE_CATALOG[rule_id].
     """
+    if rule_config is None:
+        rule_config = RULE_CATALOG[rule_id]
+
+    threshold = rule_config["deterministic_spec"]["threshold"]
+    metric = rule_config["deterministic_spec"]["metric"]
+
     # Ensure areas are computed before constructing TrackAOutput
     for e in entities:
         if e.area is None:
@@ -60,19 +64,19 @@ def evaluate_track_a(
     # Construct — __post_init__ computes area_ratio and clear_space_ratio
     output = TrackAOutput(rule_id=rule_id, entities=entities)
 
-    if rule_id == "MC-PAR-001":
-        _evaluate_parity(output, entities)
-    elif rule_id == "MC-CLR-002":
-        _evaluate_clear_space(output, entities)
+    if metric == "logo_area_ratio":
+        _evaluate_parity(output, entities, threshold)
+    elif metric == "clear_space_ratio":
+        _evaluate_clear_space(output, entities, threshold)
     else:
         output.result = Result.FAIL
-        output.evidence = f"Unknown rule_id: {rule_id}"
+        output.evidence = f"Unknown metric: {metric}"
 
     return output
 
 
-def _evaluate_parity(output: TrackAOutput, entities: list[DetectedEntity]) -> None:
-    """MC-PAR-001: area_ratio >= 0.95 threshold."""
+def _evaluate_parity(output: TrackAOutput, entities: list[DetectedEntity], threshold: float) -> None:
+    """Evaluate area_ratio against threshold."""
     if output.area_ratio is None:
         output.result = Result.FAIL
         mc = [e for e in entities if e.label.lower() == "mastercard"]
@@ -90,22 +94,22 @@ def _evaluate_parity(output: TrackAOutput, entities: list[DetectedEntity]) -> No
     mc_area = max(e.area for e in entities if e.label.lower() == "mastercard")
     comp_area = max(e.area for e in entities if e.label.lower() != "mastercard")
 
-    if output.area_ratio >= PARITY_AREA_THRESHOLD:
+    if output.area_ratio >= threshold:
         output.result = Result.PASS
         output.evidence = (
-            f"Area ratio {output.area_ratio:.4f} >= threshold {PARITY_AREA_THRESHOLD} | "
+            f"Area ratio {output.area_ratio:.4f} >= threshold {threshold} | "
             f"MC area: {mc_area}px², largest competitor area: {comp_area}px²"
         )
     else:
         output.result = Result.FAIL
         output.evidence = (
-            f"Area ratio {output.area_ratio:.4f} < threshold {PARITY_AREA_THRESHOLD} | "
+            f"Area ratio {output.area_ratio:.4f} < threshold {threshold} | "
             f"MC area: {mc_area}px², largest competitor area: {comp_area}px²"
         )
 
 
-def _evaluate_clear_space(output: TrackAOutput, entities: list[DetectedEntity]) -> None:
-    """MC-CLR-002: clear_space_ratio >= 0.25 threshold."""
+def _evaluate_clear_space(output: TrackAOutput, entities: list[DetectedEntity], threshold: float) -> None:
+    """Evaluate clear_space_ratio against threshold."""
     if output.clear_space_ratio is None:
         output.result = Result.FAIL
         mc = [e for e in entities if e.label.lower() == "mastercard"]
@@ -130,15 +134,15 @@ def _evaluate_clear_space(output: TrackAOutput, entities: list[DetectedEntity]) 
     )
     min_dist = _edge_distance(mc_entity.bbox, nearest_comp.bbox)
 
-    if output.clear_space_ratio >= CLEAR_SPACE_THRESHOLD:
+    if output.clear_space_ratio >= threshold:
         output.result = Result.PASS
         output.evidence = (
-            f"Clear space ratio {output.clear_space_ratio:.4f} >= threshold {CLEAR_SPACE_THRESHOLD} | "
+            f"Clear space ratio {output.clear_space_ratio:.4f} >= threshold {threshold} | "
             f"MC width: {mc_width}px, min gap to nearest competitor ({nearest_comp.label}): {min_dist}px"
         )
     else:
         output.result = Result.FAIL
         output.evidence = (
-            f"Clear space ratio {output.clear_space_ratio:.4f} < threshold {CLEAR_SPACE_THRESHOLD} | "
+            f"Clear space ratio {output.clear_space_ratio:.4f} < threshold {threshold} | "
             f"MC width: {mc_width}px, min gap to nearest competitor ({nearest_comp.label}): {min_dist}px"
         )

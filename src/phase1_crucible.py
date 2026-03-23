@@ -174,8 +174,8 @@ _CATALOG_RAW = _load_yaml()
 RULE_CATALOG = _CATALOG_RAW["rules"]
 
 # Named constants (Constraint 3: no inline magic numbers)
-PARITY_AREA_THRESHOLD = RULE_CATALOG["MC-PAR-001"]["deterministic_spec"]["threshold"]
-CLEAR_SPACE_THRESHOLD = RULE_CATALOG["MC-CLR-002"]["deterministic_spec"]["threshold"]
+# Note: per-rule thresholds are read from rule_config at evaluation time,
+# not from globals. Only the system-wide confidence default lives here.
 CONFIDENCE_THRESHOLD_DEFAULT = _CATALOG_RAW.get("defaults", {}).get(
     "confidence_threshold", 0.85
 )

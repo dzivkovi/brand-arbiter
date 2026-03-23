@@ -204,7 +204,10 @@ def run_pipeline(
     rule_results = []
     for rule_id in rule_ids:
         # --- Track A: Deterministic ---
-        track_a = evaluate_track_a(list(entities), rule_id=rule_id)
+        rule_config = RULE_CATALOG[rule_id]
+        track_a = evaluate_track_a(
+            list(entities), rule_id=rule_id, rule_config=rule_config,
+        )
 
         # --- Short-circuit: Track A FAIL skips Track B entirely ---
         if track_a.result == Result.FAIL:
@@ -227,7 +230,6 @@ def run_pipeline(
             continue
 
         # --- Arbitrator ---
-        rule_config = RULE_CATALOG[rule_id]
         assessment = arbitrate(
             track_a, track_b, rule_config, asset_id=asset_id,
         )

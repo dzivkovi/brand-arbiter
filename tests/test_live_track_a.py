@@ -8,7 +8,7 @@ Run: python -m pytest tests/ -v
 import pytest
 
 from live_track_a import evaluate_track_a, compute_area, compute_min_edge_distance
-from phase1_crucible import DetectedEntity, Result, PARITY_AREA_THRESHOLD, CLEAR_SPACE_THRESHOLD
+from phase1_crucible import DetectedEntity, Result, RULE_CATALOG
 
 
 # ============================================================================
@@ -86,7 +86,7 @@ class TestEvaluateTrackA:
         ]
         result = evaluate_track_a(entities)
         assert result.result == Result.FAIL
-        assert result.area_ratio < PARITY_AREA_THRESHOLD
+        assert result.area_ratio < 0.95
 
 
 # ============================================================================
