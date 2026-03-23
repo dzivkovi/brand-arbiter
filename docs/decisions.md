@@ -13,6 +13,7 @@ Lightweight decision log for Brand Arbiter. Each entry records a non-obvious arc
 **Replaces:** Original implementation where Gatekeeper fired before Track A eval.
 **Spec ref:** v2.2, Block 1 arbitration logic; Constraint 2 (Gatekeeper applies to semantic outputs, not deterministic).
 **Plan:** `plans/elegant-tumbling-pancake.md`
+**Affects:** `src/phase1_crucible.py` (`arbitrate()`), `src/main.py` (`run_pipeline()` short-circuit logic)
 
 ---
 
@@ -25,6 +26,7 @@ Lightweight decision log for Brand Arbiter. Each entry records a non-obvious arc
 **Replaces:** Ambiguous "PARITY_HOLDS: true or false" with no pole definitions.
 **Spec ref:** v2.2, Track B prompt requirements.
 **Plan:** `plans/elegant-tumbling-pancake.md`
+**Affects:** `src/live_track_b.py` (`PARITY_EVALUATION_PROMPT`, `CLEAR_SPACE_EVALUATION_PROMPT`, `DOMINANCE_EVALUATION_PROMPT`)
 
 ---
 
@@ -37,3 +39,5 @@ Lightweight decision log for Brand Arbiter. Each entry records a non-obvious arc
 **Replaces:** N/A (new capability).
 **Spec ref:** v2.2, Constraint 5 (Cross-brand conflicts always escalate).
 **Plan:** `plans/zany-soaring-papert.md`
+**Affects:** `rules.yaml` (`collision_groups`), `src/phase1_crucible.py` (`CollisionReport`, `detect_collisions()`), `src/main.py` (fail-fast at pipeline entry)
+**Related debt:** `todos/001-pending-p2-ghost-of-mastercard-refactor.md` — Gemini review found `TrackAOutput.__post_init__` still hardcodes "mastercard"; safe today but must be refactored in v1.3.0
