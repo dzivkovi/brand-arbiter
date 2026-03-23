@@ -19,10 +19,8 @@ Date: March 22, 2026
 """
 
 import argparse
-import json
 import os
 import sys
-from dataclasses import asdict
 from pathlib import Path
 
 from phase1_crucible import (
@@ -32,7 +30,9 @@ from phase1_crucible import (
     Result,
     RULE_CATALOG,
     arbitrate,
+    _generate_review_id,
     _now,
+    _serialize_track_a,
 )
 from live_track_a import evaluate_track_a
 from live_track_b import (
@@ -128,6 +128,29 @@ def resolve_scenario(image_path: str | None, scenario: str | None) -> tuple[str,
     raise ValueError("Provide --image, --scenario, or both.")
 
 
+def _build_short_circuit_assessment(
+    track_a, asset_id: str,
+) -> AssessmentOutput:
+    """Build a FAIL AssessmentOutput when Track A short-circuits.
+
+    Reuses core serialization from phase1_crucible — no logic duplication.
+    track_b is None because it was never consulted.
+    """
+    return AssessmentOutput(
+        review_id=_generate_review_id(),
+        rule_id=track_a.rule_id,
+        asset_id=asset_id,
+        timestamp=_now(),
+        final_result=Result.FAIL,
+        track_a=_serialize_track_a(track_a),
+        track_b=None,
+        arbitration_log=(
+            f"Track A: FAIL ({track_a.evidence}) | "
+            f"Deterministic short-circuit — Track B skipped"
+        ),
+    )
+
+
 def run_pipeline(
     scenario: str,
     image_path: str,
@@ -137,7 +160,9 @@ def run_pipeline(
 ) -> ComplianceReport:
     """
     Execute the full dual-track pipeline for one scenario across all rules.
-    Returns a ComplianceReport with per-rule AssessmentOutputs.
+
+    If Track A returns FAIL for a rule, Track B is skipped entirely —
+    no mock, no API call. Math is authoritative.
     """
     if store is None:
         store = LearningStore()
@@ -148,63 +173,44 @@ def run_pipeline(
     if mock is None:
         raise ValueError(f"No mock data for scenario: {scenario}")
     entities = mock.entities
-
-    print(f"\n{'='*70}")
-    print(f"PIPELINE: {scenario} ({len(rule_ids)} rules)")
-    print(f"{'='*70}")
-    print(f"  Image: {image_path}")
+    asset_id = f"pipeline-{scenario}"
 
     rule_results = []
     for rule_id in rule_ids:
-        print(f"\n  --- Rule: {rule_id} ---")
-
         # --- Track A: Deterministic ---
-        track_a = evaluate_track_a(
-            list(entities), rule_id=rule_id
-        )
-        print(f"  Track A: {track_a.result.value if track_a.result else 'N/A'}"
-              f" | {track_a.evidence}")
+        track_a = evaluate_track_a(list(entities), rule_id=rule_id)
 
-        # --- Track B: Semantic ---
+        # --- Short-circuit: Track A FAIL skips Track B entirely ---
+        if track_a.result == Result.FAIL:
+            assessment = _build_short_circuit_assessment(track_a, asset_id)
+            store.record_assessment(assessment)
+            rule_results.append(assessment)
+            continue
+
+        # --- Track B: Semantic (only when Track A passed) ---
         if dry_run:
-            track_b = mock_track_b_for_scenario(
-                scenario, rule_id=rule_id
-            )
-            print("  Track B: [DRY RUN] mock")
+            track_b = mock_track_b_for_scenario(scenario, rule_id=rule_id)
         else:
-            track_b = call_live_track_b(
-                image_path, rule_id=rule_id
-            )
-        print(f"  Track B: semantic_pass={track_b.semantic_pass}"
-              f" confidence={track_b.confidence_score:.2f}")
+            track_b = call_live_track_b(image_path, rule_id=rule_id)
 
         # --- Arbitrator ---
         rule_config = RULE_CATALOG[rule_id]
         assessment = arbitrate(
-            track_a, track_b, rule_config,
-            asset_id=f"pipeline-{scenario}",
+            track_a, track_b, rule_config, asset_id=asset_id,
         )
         store.record_assessment(assessment)
         rule_results.append(assessment)
-
-        print(f"  Result: {assessment.final_result.value}")
-        if assessment.escalation_reasons:
-            for r in assessment.escalation_reasons:
-                print(f"    → {r}")
 
     # Build ComplianceReport
     overall = ComplianceReport.worst_case(
         [a.final_result for a in rule_results]
     )
-    report = ComplianceReport(
-        asset_id=f"pipeline-{scenario}",
+    return ComplianceReport(
+        asset_id=asset_id,
         timestamp=_now(),
         rule_results=rule_results,
         overall_result=overall,
     )
-
-    print(f"\n  OVERALL: {report.overall_result.value}")
-    return report
 
 
 # ============================================================================
@@ -286,46 +292,41 @@ Examples:
             print(f"\n  ❌ Scenario '{scenario}' failed: {e}")
             results.append((scenario, None))
 
-    # --- Summary ---
+    # --- ComplianceReport Summary (primary output) ---
     print(f"\n{'='*70}")
-    print("COMPLIANCE REPORT SUMMARY")
+    print("COMPLIANCE REPORT")
     print(f"{'='*70}")
     for scenario, report in results:
         if report is None:
-            print(f"  {scenario}: ❌ ERROR")
+            print(f"\n  {scenario}: ERROR")
             continue
 
-        print(f"  {scenario}: {report.overall_result.value}")
+        print(f"\n  {scenario}: {report.overall_result.value}")
         for assessment in report.rule_results:
-            expected = SCENARIO_EXPECTED.get(scenario)
-            status = ""
-            if expected:
-                match = assessment.final_result == expected
-                status = f" {'✅' if match else '⚠️'}"
-            print(f"    {assessment.rule_id}: "
-                  f"{assessment.final_result.value}{status}")
+            # Extract evidence from arbitration_log for concise display
+            evidence = ""
+            if assessment.track_a and "evidence" in assessment.track_a:
+                evidence = assessment.track_a["evidence"]
+            elif assessment.arbitration_log:
+                evidence = assessment.arbitration_log
 
-    # Learning loop stats
+            short_circuit = assessment.track_b is None
+            prefix = "short-circuit" if short_circuit else "arbitrated"
+            print(f"    {assessment.rule_id}: "
+                  f"{assessment.final_result.value} "
+                  f"({prefix}: {evidence})")
+
+            if assessment.escalation_reasons:
+                for r in assessment.escalation_reasons:
+                    print(f"      -> {r}")
+
+    # Learning loop footer
+    print(f"\n{'='*70}")
     for rule_id in ACTIVE_RULES:
         rate = store.override_rate(rule_id)
-        print(f"\n  Learning Loop — {rule_id}: "
+        print(f"  {rule_id}: "
               f"{rate['total_assessments']} assessments, "
               f"{rate['total_overrides']} overrides")
-
-    # Dump JSON for hard_case if present
-    hard = [r for s, r in results
-            if s == "hard_case" and r is not None]
-    if hard:
-        print(f"\n{'='*70}")
-        print("FULL OUTPUT: hard_case")
-        print(f"{'='*70}")
-        output = asdict(hard[0])
-        output["overall_result"] = hard[0].overall_result.value
-        for i, a in enumerate(hard[0].rule_results):
-            output["rule_results"][i]["final_result"] = (
-                a.final_result.value
-            )
-        print(json.dumps(output, indent=2, default=str))
 
 
 if __name__ == "__main__":
