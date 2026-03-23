@@ -27,11 +27,14 @@ import anthropic
 
 from phase1_crucible import (
     AssessmentOutput,
+    CollisionReport,
     ComplianceReport,
     LearningStore,
     Result,
     RULE_CATALOG,
+    _load_yaml,
     arbitrate,
+    detect_collisions,
     _generate_review_id,
     _now,
     _serialize_track_a,
@@ -195,12 +198,17 @@ def run_pipeline(
     if rule_ids is None:
         rule_ids = ACTIVE_RULES
 
+    # --- Static collision detection (fail fast) ---
+    catalog_raw = _load_yaml()
+    collisions = detect_collisions(catalog_raw, active_rules=rule_ids)
+
     mock = MOCK_TRACK_A_SCENARIOS.get(scenario)
     if mock is None:
         raise ValueError(f"No mock data for scenario: {scenario}")
     entities = mock.entities
     asset_id = f"pipeline-{scenario}"
 
+    # Still run Track A/B even with collisions — gather visual evidence
     rule_results = []
     for rule_id in rule_ids:
         # --- Track A: Deterministic ---
@@ -236,15 +244,19 @@ def run_pipeline(
         store.record_assessment(assessment)
         rule_results.append(assessment)
 
-    # Build ComplianceReport
+    # Build ComplianceReport with brand grouping and collision awareness
     overall = ComplianceReport.worst_case(
-        [a.final_result for a in rule_results]
+        [a.final_result for a in rule_results],
+        collisions=collisions,
     )
+    brand_results = ComplianceReport.group_by_brand(rule_results, RULE_CATALOG)
     return ComplianceReport(
         asset_id=asset_id,
         timestamp=_now(),
         rule_results=rule_results,
         overall_result=overall,
+        brand_results=brand_results,
+        collisions=collisions,
     )
 
 
@@ -337,6 +349,18 @@ Examples:
             continue
 
         print(f"\n  {scenario}: {report.overall_result.value}")
+
+        # Collisions first (architectural blockers)
+        if report.collisions:
+            print(f"\n    CROSS-BRAND COLLISIONS:")
+            for col in report.collisions:
+                print(f"    !! {' vs '.join(col.rules_involved)}: "
+                      f"ESCALATED (CROSS_BRAND_CONFLICT)")
+                print(f"       Brands: {', '.join(col.brands_involved)}")
+                print(f"       Proof: {col.mathematical_proof}")
+                print(f"       Reason: {col.reason}")
+
+        # Per-rule results (grouped by brand if multiple brands)
         for assessment in report.rule_results:
             # Extract evidence from arbitration_log for concise display
             evidence = ""

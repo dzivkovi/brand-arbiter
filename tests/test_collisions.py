@@ -8,6 +8,7 @@ import pytest
 # Allow imports from src/
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
+from main import run_pipeline
 from phase1_crucible import (
     AssessmentOutput,
     CollisionReport,
@@ -249,3 +250,29 @@ class TestComplianceReportCollisions:
         assert report.rule_results[0].final_result == Result.FAIL  # MC-PAR-001
         assert report.rule_results[1].final_result == Result.PASS  # BC-DOM-001
         assert len(report.collisions) == 1
+
+
+# ============================================================================
+# Step 5: Pipeline integration — collision detection wired into run_pipeline()
+# ============================================================================
+
+
+class TestPipelineCollisionDetection:
+    """Verify run_pipeline() detects and reports cross-brand collisions."""
+
+    def test_no_collision_single_brand(self):
+        """Default MC-only rules → no collisions."""
+        report = run_pipeline(
+            "compliant", "fake.png", dry_run=True,
+            rule_ids=["MC-PAR-001", "MC-CLR-002"],
+        )
+        assert report.collisions == []
+
+    def test_pipeline_has_brand_results(self):
+        """run_pipeline populates brand_results grouping."""
+        report = run_pipeline(
+            "compliant", "fake.png", dry_run=True,
+            rule_ids=["MC-PAR-001", "MC-CLR-002"],
+        )
+        assert "mastercard" in report.brand_results
+        assert len(report.brand_results["mastercard"]) == 2
