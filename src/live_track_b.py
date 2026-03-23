@@ -167,6 +167,29 @@ RULE_PROMPTS = {
 
 
 # ============================================================================
+# Image Encoding
+# ============================================================================
+
+MEDIA_TYPES = {".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg"}
+
+
+def encode_image_base64(image_path: str | Path) -> tuple[str, str]:
+    """Encode an image file to base64, returning (data, media_type).
+
+    Raises FileNotFoundError if the image does not exist.
+    """
+    image_path = Path(image_path)
+    if not image_path.exists():
+        raise FileNotFoundError(f"Image not found: {image_path}")
+
+    with open(image_path, "rb") as f:
+        data = base64.standard_b64encode(f.read()).decode("utf-8")
+
+    media_type = MEDIA_TYPES.get(image_path.suffix.lower(), "image/png")
+    return data, media_type
+
+
+# ============================================================================
 # Live Track B: Anthropic Claude Vision API
 # ============================================================================
 
@@ -182,17 +205,7 @@ def call_live_track_b(
     client = anthropic.Anthropic()  # reads ANTHROPIC_API_KEY from env
 
     # Read and encode the image
-    image_path = Path(image_path)
-    if not image_path.exists():
-        raise FileNotFoundError(f"Image not found: {image_path}")
-
-    with open(image_path, "rb") as f:
-        image_data = base64.standard_b64encode(f.read()).decode("utf-8")
-
-    # Determine media type
-    suffix = image_path.suffix.lower()
-    media_types = {".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg"}
-    media_type = media_types.get(suffix, "image/png")
+    image_data, media_type = encode_image_base64(image_path)
 
     # Get image dimensions for context
     try:
