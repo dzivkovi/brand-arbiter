@@ -21,6 +21,7 @@ from phase1_crucible import (
     arbitrate,
     gatekeeper,
     reconcile_entities,
+    load_rule_catalog,
 )
 
 RULE_CONFIG = RULE_CATALOG["MC-PAR-001"]
@@ -434,3 +435,52 @@ class TestClearSpaceArbitration:
         result = arbitrate(a, b, CLR_RULE_CONFIG, asset_id="test-clr-entity")
         assert result.final_result == Result.ESCALATED
         assert "Entity Reconciliation" in result.arbitration_log
+
+
+# ============================================================================
+# Rule Catalog Loader
+# ============================================================================
+
+class TestLoadRuleCatalog:
+
+    def test_load_returns_expected_rules(self):
+        """Default rules.yaml contains both MC-PAR-001 and MC-CLR-002."""
+        catalog = load_rule_catalog()
+        assert "MC-PAR-001" in catalog
+        assert "MC-CLR-002" in catalog
+        assert catalog["MC-PAR-001"]["deterministic_spec"]["threshold"] == 0.95
+        assert catalog["MC-CLR-002"]["deterministic_spec"]["threshold"] == 0.25
+
+    def test_load_rule_structure(self):
+        """Each rule has name, type, deterministic_spec, and semantic_spec."""
+        catalog = load_rule_catalog()
+        for rule_id, rule in catalog.items():
+            assert "name" in rule, f"{rule_id} missing 'name'"
+            assert "type" in rule, f"{rule_id} missing 'type'"
+            assert "deterministic_spec" in rule, f"{rule_id} missing 'deterministic_spec'"
+            assert "semantic_spec" in rule, f"{rule_id} missing 'semantic_spec'"
+
+    def test_load_custom_path(self, tmp_path):
+        """Loading from a custom YAML path works."""
+        custom = tmp_path / "custom_rules.yaml"
+        custom.write_text(
+            "rules:\n"
+            "  TEST-001:\n"
+            "    name: Test Rule\n"
+            "    type: deterministic\n"
+            "    block: 1\n"
+            "    deterministic_spec:\n"
+            "      metric: test_metric\n"
+            "      operator: '>='\n"
+            "      threshold: 0.50\n"
+            "    semantic_spec:\n"
+            "      confidence_threshold: 0.90\n"
+        )
+        catalog = load_rule_catalog(custom)
+        assert "TEST-001" in catalog
+        assert catalog["TEST-001"]["deterministic_spec"]["threshold"] == 0.50
+
+    def test_load_missing_file_raises(self, tmp_path):
+        """Non-existent YAML path raises FileNotFoundError."""
+        with pytest.raises(FileNotFoundError):
+            load_rule_catalog(tmp_path / "nonexistent.yaml")
