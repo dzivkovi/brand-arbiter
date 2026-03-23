@@ -63,6 +63,7 @@ class TrackAOutput:
     evidence: str = ""
     area_ratio: Optional[float] = field(default=None, init=False)
     clear_space_ratio: Optional[float] = field(default=None, init=False)
+    brand_dominance_ratio: Optional[float] = field(default=None, init=False)
 
     def __post_init__(self):
         """Compute derived metrics from entities — single source of truth."""
@@ -87,6 +88,11 @@ class TrackAOutput:
         if mc_width > 0:
             min_dist = min(_edge_distance(mc_entity.bbox, c.bbox) for c in competitors)
             self.clear_space_ratio = min_dist / mc_width
+
+        # --- Brand dominance ratio (BC-DOM-001) ---
+        # Generic: any non-mc brand area / mc area (for co-brand scenarios)
+        if mc_area > 0 and comp_area > 0:
+            self.brand_dominance_ratio = comp_area / mc_area
 
 
 def _edge_distance(a: list[int], b: list[int]) -> int:

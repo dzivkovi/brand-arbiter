@@ -68,6 +68,10 @@ def evaluate_track_a(
         _evaluate_parity(output, entities, threshold)
     elif metric == "clear_space_ratio":
         _evaluate_clear_space(output, entities, threshold)
+    elif metric == "brand_dominance_ratio":
+        subject = rule_config["deterministic_spec"]["subject"]
+        reference = rule_config["deterministic_spec"]["reference"]
+        _evaluate_brand_dominance(output, entities, threshold, subject, reference)
     else:
         output.result = Result.FAIL
         output.evidence = f"Unknown metric: {metric}"
@@ -145,4 +149,50 @@ def _evaluate_clear_space(output: TrackAOutput, entities: list[DetectedEntity], 
         output.evidence = (
             f"Clear space ratio {output.clear_space_ratio:.4f} < threshold {threshold} | "
             f"MC width: {mc_width}px, min gap to nearest competitor ({nearest_comp.label}): {min_dist}px"
+        )
+
+
+def _evaluate_brand_dominance(
+    output: TrackAOutput,
+    entities: list[DetectedEntity],
+    threshold: float,
+    subject: str,
+    reference: str,
+) -> None:
+    """Evaluate brand_dominance_ratio (subject_area / reference_area) against threshold."""
+    subj = [e for e in entities if e.label.lower() == subject.lower()]
+    ref = [e for e in entities if e.label.lower() == reference.lower()]
+
+    if not subj:
+        output.result = Result.FAIL
+        output.evidence = f"No {subject} entity detected — cannot evaluate dominance"
+        return
+
+    if not ref:
+        output.result = Result.FAIL
+        output.evidence = f"No {reference} entity detected — cannot evaluate dominance"
+        return
+
+    subj_area = max(e.area for e in subj)
+    ref_area = max(e.area for e in ref)
+
+    if ref_area == 0:
+        output.result = Result.FAIL
+        output.evidence = f"{reference} entity has zero area — degenerate bounding box"
+        return
+
+    ratio = subj_area / ref_area
+    output.brand_dominance_ratio = ratio
+
+    if ratio >= threshold:
+        output.result = Result.PASS
+        output.evidence = (
+            f"Dominance ratio {ratio:.4f} >= threshold {threshold} | "
+            f"{subject} area: {subj_area}px², {reference} area: {ref_area}px²"
+        )
+    else:
+        output.result = Result.FAIL
+        output.evidence = (
+            f"Dominance ratio {ratio:.4f} < threshold {threshold} | "
+            f"{subject} area: {subj_area}px², {reference} area: {ref_area}px²"
         )

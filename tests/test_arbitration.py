@@ -498,3 +498,65 @@ class TestLoadRuleCatalog:
         empty.write_text("")
         with pytest.raises(ValueError, match="top-level 'rules' key"):
             load_rule_catalog(empty)
+
+
+# ============================================================================
+# Brand Dominance arbitration (BC-DOM-001)
+# ============================================================================
+
+DOM_RULE_CONFIG = RULE_CATALOG["BC-DOM-001"]
+
+
+def make_track_a_dominance(dominance_ratio, labels=("mastercard", "barclays")):
+    """Build TrackAOutput with bboxes producing the given barclays/mc ratio.
+
+    Mastercard gets a fixed 10000px² bbox. Barclays bbox is sized so
+    barclays_area / mc_area == dominance_ratio.
+    """
+    mc_bbox = [0, 0, 10000, 1]  # area = 10000
+    bc_width = round(dominance_ratio * 10000)
+    bc_bbox = [20000, 0, 20000 + bc_width, 1]  # area = bc_width
+
+    entities = []
+    for label in labels:
+        if label.lower() == "mastercard":
+            entities.append(DetectedEntity(label=label, bbox=mc_bbox))
+        else:
+            entities.append(DetectedEntity(label=label, bbox=bc_bbox))
+
+    return TrackAOutput(rule_id="BC-DOM-001", entities=entities)
+
+
+def make_track_b_dominance(semantic_pass, confidence, labels=("mastercard", "barclays")):
+    return TrackBOutput(
+        rule_id="BC-DOM-001",
+        entities=make_entities(*labels),
+        semantic_pass=semantic_pass,
+        confidence_score=confidence,
+        reasoning_trace="test",
+    )
+
+
+class TestDominanceArbitration:
+
+    def test_dominance_both_pass(self):
+        """Both tracks agree Barclays dominates → PASS."""
+        a = make_track_a_dominance(1.25)
+        b = make_track_b_dominance(True, 0.95)
+        result = arbitrate(a, b, DOM_RULE_CONFIG, asset_id="test-dom-pass")
+        assert result.final_result == Result.PASS
+
+    def test_dominance_track_a_fail_short_circuits(self):
+        """Barclays too small → Track A FAIL → deterministic short-circuit."""
+        a = make_track_a_dominance(1.10)
+        b = make_track_b_dominance(True, 0.95)
+        result = arbitrate(a, b, DOM_RULE_CONFIG, asset_id="test-dom-fail")
+        assert result.final_result == Result.FAIL
+        assert "short-circuit" in result.arbitration_log.lower()
+
+    def test_dominance_tracks_disagree_escalates(self):
+        """Track A PASS but Track B says no → ESCALATED."""
+        a = make_track_a_dominance(1.25)
+        b = make_track_b_dominance(False, 0.92)
+        result = arbitrate(a, b, DOM_RULE_CONFIG, asset_id="test-dom-escalate")
+        assert result.final_result == Result.ESCALATED

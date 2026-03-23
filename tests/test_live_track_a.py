@@ -285,3 +285,80 @@ class TestEvaluateTrackAClearSpace:
         result = evaluate_track_a(entities, rule_id="MC-CLR-002")
         assert "100" in result.evidence  # MC width
         assert "30" in result.evidence   # gap
+
+
+# ============================================================================
+# Brand Dominance evaluation (BC-DOM-001)
+# ============================================================================
+
+class TestEvaluateTrackABrandDominance:
+
+    def test_barclays_larger_pass(self):
+        """Barclays 25% larger → ratio 1.25 >= 1.20 → PASS."""
+        entities = [
+            DetectedEntity(label="mastercard", bbox=[0, 0, 100, 100]),   # area 10000
+            DetectedEntity(label="barclays", bbox=[200, 0, 325, 100]),   # area 12500
+        ]
+        result = evaluate_track_a(entities, rule_id="BC-DOM-001")
+        assert result.result == Result.PASS
+        assert result.brand_dominance_ratio == pytest.approx(1.25)
+
+    def test_barclays_smaller_fail(self):
+        """Barclays only 10% larger → ratio 1.10 < 1.20 → FAIL."""
+        entities = [
+            DetectedEntity(label="mastercard", bbox=[0, 0, 100, 100]),   # area 10000
+            DetectedEntity(label="barclays", bbox=[200, 0, 310, 100]),   # area 11000
+        ]
+        result = evaluate_track_a(entities, rule_id="BC-DOM-001")
+        assert result.result == Result.FAIL
+        assert result.brand_dominance_ratio == pytest.approx(1.10)
+
+    def test_at_threshold_pass(self):
+        """Exactly at 1.20 threshold → PASS (>= comparison)."""
+        entities = [
+            DetectedEntity(label="mastercard", bbox=[0, 0, 100, 100]),   # area 10000
+            DetectedEntity(label="barclays", bbox=[200, 0, 320, 100]),   # area 12000
+        ]
+        result = evaluate_track_a(entities, rule_id="BC-DOM-001")
+        assert result.result == Result.PASS
+        assert result.brand_dominance_ratio == pytest.approx(1.20)
+
+    def test_just_below_threshold_fail(self):
+        """Ratio 1.199 < 1.20 → FAIL."""
+        entities = [
+            DetectedEntity(label="mastercard", bbox=[0, 0, 1000, 1]),    # area 1000
+            DetectedEntity(label="barclays", bbox=[2000, 0, 3199, 1]),   # area 1199
+        ]
+        result = evaluate_track_a(entities, rule_id="BC-DOM-001")
+        assert result.result == Result.FAIL
+        assert result.brand_dominance_ratio == pytest.approx(1.199)
+
+    def test_missing_subject_entity_fail(self):
+        """No barclays entity → FAIL with diagnostic evidence."""
+        entities = [
+            DetectedEntity(label="mastercard", bbox=[0, 0, 100, 100]),
+            DetectedEntity(label="visa", bbox=[200, 0, 300, 100]),
+        ]
+        result = evaluate_track_a(entities, rule_id="BC-DOM-001")
+        assert result.result == Result.FAIL
+        assert "barclays" in result.evidence.lower()
+
+    def test_missing_reference_entity_fail(self):
+        """No mastercard entity → FAIL with diagnostic evidence."""
+        entities = [
+            DetectedEntity(label="barclays", bbox=[0, 0, 100, 100]),
+            DetectedEntity(label="visa", bbox=[200, 0, 300, 100]),
+        ]
+        result = evaluate_track_a(entities, rule_id="BC-DOM-001")
+        assert result.result == Result.FAIL
+        assert "mastercard" in result.evidence.lower()
+
+    def test_evidence_contains_measurements(self):
+        """Evidence string must include area measurements."""
+        entities = [
+            DetectedEntity(label="mastercard", bbox=[0, 0, 100, 100]),   # area 10000
+            DetectedEntity(label="barclays", bbox=[200, 0, 325, 100]),   # area 12500
+        ]
+        result = evaluate_track_a(entities, rule_id="BC-DOM-001")
+        assert "12500" in result.evidence  # barclays area
+        assert "10000" in result.evidence  # mastercard area
