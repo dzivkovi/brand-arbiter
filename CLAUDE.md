@@ -27,10 +27,18 @@ cd src && python phase1_crucible.py
 
 Runs 5 mocked end-to-end scenarios proving the full pipeline (Arbitrator, Gatekeeper, Entity Reconciliation, Learning Loop). All 5 must pass.
 
-### Run Phase 2 live semantic pipeline (requires ANTHROPIC_API_KEY)
+### Run integrated pipeline — dry-run (no API key needed)
+
 ```bash
-cd src && python live_track_b.py --scenario hard_case
-cd src && python live_track_b.py --scenario all
+cd src && python main.py --scenario hard_case --dry-run
+cd src && python main.py --scenario all --dry-run
+```
+
+### Run integrated pipeline — live (requires ANTHROPIC_API_KEY)
+
+```bash
+cd src && python main.py --scenario hard_case
+cd src && python main.py --scenario all
 ```
 
 ### Install dependencies
@@ -54,10 +62,24 @@ All domain types, the arbitration engine, and test harness live in one file:
 - `reconcile_entities()`: Ensures both tracks detected the same entities before comparison
 - `LearningStore`: Records assessments and human overrides; tracks override rates for recalibration signals
 
+### Key components in `src/live_track_a.py`
+
+- `evaluate_track_a()`: Routes by `rule_id` — parity (area ratio) or clear space (edge distance)
+- `compute_min_edge_distance()`: Calculates pixel gap between two bounding boxes
+
 ### Key components in `src/live_track_b.py`
-- `call_live_track_b()`: Sends image to Claude Vision API with structured parity evaluation prompt, returns `TrackBOutput`
-- `PARITY_EVALUATION_PROMPT`: Chain-of-thought rubric — entity detection → visual parity assessment → mechanical confidence scoring with explicit penalty deductions
-- Imports and reuses the entire Phase 1 pipeline (`arbitrate`, types, etc.)
+
+- `call_live_track_b()`: Sends image to Claude Vision API with structured evaluation prompt, returns `TrackBOutput`
+- `parse_track_b_response()`: Strict schema validator — the parsing firewall between LLM output and domain model. Rejects missing fields, wrong types, out-of-range confidence. Raises `ValueError` on any violation.
+- `encode_image_base64()`: Converts local images to base64 for API transmission
+- `RULE_PROMPTS`: Maps rule_id to evaluation rubric (parity prompt, clear space prompt)
+
+### Key components in `src/main.py`
+
+- `run_pipeline()`: Orchestrates Track A → short-circuit check → Track B → Arbitrator for all active rules
+- `_build_short_circuit_assessment()`: Creates FAIL assessment when Track A kills a rule (Track B never called)
+- `_build_escalated_assessment()`: Creates ESCALATED assessment when Track B parse fails (LLM returned junk)
+- `ComplianceReport` output: Per-rule results with worst-case overall aggregation
 
 ## Rule Taxonomy
 
@@ -69,7 +91,7 @@ Four rule types, each handled differently:
 | Semantic | Track B only | Read-through (logo used as letter) |
 | Regex | OCR + regex | Lettercase ("Mastercard" not "MasterCard") |
 
-Currently only the hybrid rule `MC-PAR-001` (Payment Mark Parity) is implemented.
+Currently implemented: `MC-PAR-001` (Payment Mark Parity, hybrid) and `MC-CLR-002` (Clear Space, hybrid).
 
 ## Safety Constraints
 
@@ -87,8 +109,17 @@ These are architectural invariants, not guidelines:
 | Phase | Status |
 |-------|--------|
 | Phase 1: Mocked dual-track arbitration | Complete (5/5 tests) |
-| Phase 2: Live semantic pipeline (Claude Vision) | Built, needs API key |
-| Phase 3: Live deterministic pipeline (YOLO + OpenCV) | Not started |
-| Phase 4: Integration + real asset testing | Not started |
+| Phase 2: Live semantic pipeline (Claude Vision) | Complete (strict parsing firewall) |
+| Phase 3: Multi-rule orchestration (MC-CLR-002) | Complete (100 tests) |
+| Phase 4: Integrated pipeline (`main.py`) | Complete (dry-run + live modes) |
+| Phase 5: Live deterministic pipeline (YOLO + OpenCV) | Not started |
+| Phase 6: Real asset testing | Not started |
+
+## Documentation
+
+- `docs/architecture-one-pager.md` — Visual pipeline overview for exec/demo audiences
+- `docs/demo-playbook.md` — Rehearsable 5-minute demo script with talking points
+- `docs/walkthrough-lab-results.md` — Scenario cheat sheet (predicted vs actual outcomes)
+- `docs/decisions.md` — Architectural decision log
 
 **Remember: Always validate your code locally and follow specs/agent-rules.md before auto-committing.**
