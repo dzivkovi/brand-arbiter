@@ -5,6 +5,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## System Instructions
 Before executing any task, you MUST read and strictly adhere to the constraints defined in `specs/agent-rules.md`.
 
+## Backlog
+Always check `todos/` before asking for the next task. Files follow the naming convention `{id}-{status}-{priority}-{description}.md` with YAML frontmatter. If you identify technical debt during a refactor, do not fix it immediately without permission; instead, add it as a `pending` todo in `todos/`.
+
 ## Project Overview
 
 Brand Arbiter is an automated brand compliance engine that splits evaluation into two parallel tracks — deterministic computer vision (Track A) and semantic AI judgment (Track B) — then arbitrates where they overlap. The core safety property: semantic uncertainty is never silently converted to deterministic confidence.
