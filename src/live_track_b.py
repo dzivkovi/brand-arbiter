@@ -103,6 +103,69 @@ You MUST respond with ONLY the following JSON object. No markdown, no backticks,
 }"""
 
 
+CLEAR_SPACE_EVALUATION_PROMPT = """You are a brand compliance analyst evaluating whether a Mastercard logo has adequate clear space.
+
+## TASK
+Analyze this image and evaluate whether the Mastercard logo has sufficient empty space around it — free from competing logos, text, complex backgrounds, or edge-of-frame cutoff.
+
+## STEP 1: ENTITY DETECTION
+List every payment brand logo you can identify in the image. For each one, provide:
+- The brand name (lowercase: "mastercard", "visa", "amex", etc.)
+- Approximate bounding box as [x1, y1, x2, y2] in pixels from top-left corner
+- Whether the logo is fully visible, partially occluded, or unclear
+
+## STEP 2: CLEAR SPACE ASSESSMENT
+Evaluate whether the Mastercard logo has adequate breathing room. Consider:
+- Distance to nearest competing logo (is it crowded by other brands?)
+- Background complexity (is the logo placed over busy patterns, gradients, or photographs?)
+- Text intrusion (does promotional text, taglines, or fine print crowd the logo?)
+- Edge-of-frame cutoff (is the logo too close to the image boundary?)
+- Overall visual clutter in the logo's immediate vicinity
+
+Write your reasoning in detail BEFORE stating your conclusion.
+
+Conclude with: "CLEAR_SPACE_ADEQUATE: true" (logo has sufficient breathing room) or "CLEAR_SPACE_ADEQUATE: false" (logo feels crowded or cramped).
+
+## STEP 3: CONFIDENCE SCORING (MANDATORY RUBRIC)
+Apply this rubric MECHANICALLY after your assessment. Do not skip any step.
+
+Start at 1.00, then apply each penalty that applies:
+- If any logo is partially occluded or cropped by other elements: subtract 0.30
+- If the image resolution is below 300px on its shortest dimension: subtract 0.20
+- If any logo has a complex/textured background making edges unclear: subtract 0.15
+- If more than 3 payment logos are present in the image: subtract 0.10
+- If any logo appears to be a watermark or semi-transparent: subtract 0.25
+- If logos are in a footer or secondary area making hierarchy assessment ambiguous: subtract 0.05
+- Minimum possible score: 0.10
+
+List each penalty you applied with its reason, then state the final score.
+
+## OUTPUT FORMAT
+You MUST respond with ONLY the following JSON object. No markdown, no backticks, no preamble.
+
+{
+  "entities": [
+    {
+      "label": "mastercard",
+      "bbox": [x1, y1, x2, y2],
+      "visibility": "full|partial|unclear"
+    }
+  ],
+  "reasoning_trace": "Your detailed Step 2 analysis here...",
+  "semantic_pass": true or false,  // true = adequate clear space (PASS), false = crowded (FAIL)
+  "rubric_penalties": [
+    "Description of penalty: -0.XX"
+  ],
+  "confidence_score": 0.XX
+}"""
+
+
+RULE_PROMPTS = {
+    "MC-PAR-001": PARITY_EVALUATION_PROMPT,
+    "MC-CLR-002": CLEAR_SPACE_EVALUATION_PROMPT,
+}
+
+
 # ============================================================================
 # Live Track B: Anthropic Claude Vision API
 # ============================================================================
@@ -161,7 +224,7 @@ def call_live_track_b(
                     },
                     {
                         "type": "text",
-                        "text": f"{resolution_note}\n\n{PARITY_EVALUATION_PROMPT}",
+                        "text": f"{resolution_note}\n\n{RULE_PROMPTS[rule_id]}",
                     },
                 ],
             }
@@ -260,6 +323,23 @@ MOCK_TRACK_A_SCENARIOS = {
             DetectedEntity(label="visa", bbox=[200, 20, 300, 120]),         # 100×100 = 10000
         ],
     ),
+    # --- MC-CLR-002: Clear Space scenarios ---
+    # gap=10px, mc_width=100 → clear_space_ratio=0.10 → FAIL
+    "clear_space_violation": TrackAOutput(
+        rule_id="MC-CLR-002",
+        entities=[
+            DetectedEntity(label="mastercard", bbox=[100, 100, 200, 200]),  # 100×100
+            DetectedEntity(label="visa", bbox=[210, 100, 310, 200]),        # gap = 10px
+        ],
+    ),
+    # gap=30px, mc_width=100 → clear_space_ratio=0.30 → PASS
+    "clear_space_compliant": TrackAOutput(
+        rule_id="MC-CLR-002",
+        entities=[
+            DetectedEntity(label="mastercard", bbox=[100, 100, 200, 200]),  # 100×100
+            DetectedEntity(label="visa", bbox=[230, 100, 330, 200]),        # gap = 30px
+        ],
+    ),
 }
 
 # Map scenario names to test image files
@@ -269,6 +349,8 @@ SCENARIO_IMAGES = {
     "compliant": "../test_assets/parity_compliant.png",
     "three_logos": "../test_assets/parity_three_logos.png",
     "low_res": "../test_assets/parity_low_res_occluded.png",
+    "clear_space_violation": "../test_assets/clearspace_violation.png",
+    "clear_space_compliant": "../test_assets/clearspace_compliant.png",
 }
 
 SCENARIO_EXPECTED = {
@@ -277,6 +359,8 @@ SCENARIO_EXPECTED = {
     "compliant": Result.PASS,
     "three_logos": Result.ESCALATED,  # Entity mismatch (YOLO sees 2, LLM may see 3)
     "low_res": Result.ESCALATED,  # Entity mismatch — Claude may miss occluded MC logo
+    "clear_space_violation": Result.FAIL,  # Track A short-circuit — too close
+    "clear_space_compliant": Result.PASS,  # Both tracks agree — adequate space
 }
 
 
