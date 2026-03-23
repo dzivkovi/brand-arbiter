@@ -48,6 +48,8 @@ pip install -r requirements.txt
 
 ## Architecture
 
+Rules are defined in `rules.yaml` (the single source of truth). The engine loads them at startup — to change a threshold or add a rule, edit the YAML file, not the Python code.
+
 The system processes brand compliance rules through a dual-track pipeline:
 
 - **Track A (Deterministic):** YOLO object detection + OpenCV measurements → hard PASS/FAIL based on pixel math (e.g., logo area ratios). Currently mocked in Phase 1; YOLO/OpenCV planned for Phase 3.

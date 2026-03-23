@@ -124,6 +124,31 @@ and routes them to human review with full context from both rule evaluations.
 
 ---
 
+## Scene 4: "The Config File" (60 seconds -- proves decoupling)
+
+**What to say:** "Let me show you something. This is the entire rule catalog."
+
+Open `rules.yaml` in a text editor on screen. Let the audience read it.
+
+**Talking point:** "Every rule the engine enforces lives in this file. The
+thresholds, the rule types, the confidence gates -- all here. If Mastercard
+changes their clear space requirement from 25% to 30% tomorrow, we change
+one number in this file. No code changes. No deployment. No regression testing
+of the engine itself."
+
+**If asked "Can a non-developer edit this?":**
+"Yes. YAML is designed to be human-readable. A brand compliance manager
+could update a threshold with a text editor. In production, we'd add a
+simple web form that writes to this file, but the point is: the engine
+is completely decoupled from the brand guidelines it enforces."
+
+**If asked "How do you add a new brand?":**
+"You add a new block to this file. Define the rule ID, the metric, the
+threshold, and the rule type. The engine picks it up on the next run.
+We went from one rule to two without changing any pipeline code."
+
+---
+
 ## The Killer Demo Moment
 
 If you have time for only ONE thing to show, run `hard_case` and point to:
@@ -134,3 +159,7 @@ tracks_disagree: Track A PASS but Track B FAIL (confidence 0.91)
 
 Then say: **"This is the moment where every other system would either silently
 approve or silently reject. Ours says: I found something humans need to see."**
+
+Then open `rules.yaml` and say: **"And this is the entire brain of the system.
+Every rule, every threshold, in plain text. The engine doesn't know what
+Mastercard is -- it just enforces whatever's in this file."**

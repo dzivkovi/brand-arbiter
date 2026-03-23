@@ -1,51 +1,74 @@
-# Plan: Knowledge Transfer — Walkthrough Lab → Architecture One-Pager → Demo Playbook
+# Plan: Externalize Rule Catalog to YAML
 
 ## Context
 
-Task 04 is complete (100 tests, live pipeline working). The code is solid but the **architect's comprehension** needs to match the code's maturity. The user can run the engine but needs to reach Level 3 mastery: predicting outputs before running them. This is the difference between "I built this with AI" and "I architected this."
+`RULE_CATALOG` is currently a Python dict hardcoded in `src/phase1_crucible.py` (line 147). The engine already reads from it dynamically — `arbitrate()` uses `rule_config["deterministic_spec"]["threshold"]`, never hardcoded values. Moving it to a YAML file proves the pitch: "update a config file, not the code."
 
-## Phase 1: Walkthrough Lab (Interactive, ~20 min)
+## What changes
 
-**Goal:** Build prediction muscle. For each scenario, the user predicts the outcome *before* we run it.
+### Step 1: Create `rules.yaml` at project root
 
-5 scenarios, increasing difficulty:
+```yaml
+rules:
+  MC-PAR-001:
+    name: "Payment Mark Parity"
+    type: hybrid
+    block: 1
+    deterministic_spec:
+      metric: logo_area_ratio
+      operator: ">="
+      threshold: 0.95
+    semantic_spec:
+      confidence_threshold: 0.85
 
-| # | Scenario | Key question |
-|---|----------|-------------|
-| 1 | `compliant` | What does a clean PASS look like across both rules? |
-| 2 | `clear_violation` | Which rule short-circuits? Which gets arbitrated? |
-| 3 | `hard_case` | Why does near-equal pixel area still ESCALATE? |
-| 4 | `clear_space_violation` | Same question, reversed — which rule fails math? |
-| 5 | `low_res` | What happens when the AI has low confidence on everything? |
+  MC-CLR-002:
+    name: "Clear Space"
+    type: hybrid
+    block: 1
+    deterministic_spec:
+      metric: clear_space_ratio
+      operator: ">="
+      threshold: 0.25
+    semantic_spec:
+      confidence_threshold: 0.85
+```
 
-**Method:** I present the bounding box data, ask the user to trace through the gates, then we run the command to verify. Byproduct: a cheat sheet of "scenario → expected output" mappings.
+### Step 2: Add loader in `src/phase1_crucible.py`
 
-**Output:** `docs/walkthrough-lab-results.md` — the completed predictions + actuals
+Replace the hardcoded `RULE_CATALOG` dict with:
+```python
+def load_rule_catalog(path: Path | None = None) -> dict:
+    """Load rule catalog from YAML. Falls back to bundled default."""
+    if path is None:
+        path = Path(__file__).parent.parent / "rules.yaml"
+    with open(path) as f:
+        return yaml.safe_load(f)["rules"]
 
-## Phase 2: Architecture One-Pager (`docs/architecture-one-pager.md`)
+RULE_CATALOG = load_rule_catalog()
+```
 
-**Goal:** A single page a Barclays exec can follow.
+- `pyyaml` is already in requirements.txt (used by pytest)
+- Named constants `PARITY_AREA_THRESHOLD` and `CLEAR_SPACE_THRESHOLD` still derived from `RULE_CATALOG` — no change
+- Add `import yaml` to imports
 
-Contents:
-- ASCII flowchart of the 3-gate pipeline (short-circuit → parsing firewall → gatekeeper → arbitrator)
-- The 3 possible outcomes explained in business language
-- The "SOP Collision" pitch in one paragraph
-- The rule taxonomy table (4 types)
+### Step 3: Update tests
 
-No code. No jargon. Boxes and arrows.
+- Add `test_load_rule_catalog_returns_expected_rules` — verify both rules load with correct thresholds
+- Add `test_load_rule_catalog_custom_path` — verify loading from a custom YAML path
+- All 100 existing tests must still pass (they read from `RULE_CATALOG` which is still populated at module load)
 
-## Phase 3: Demo Playbook (`docs/demo-playbook.md`)
+### Step 4: Update CLAUDE.md
 
-**Goal:** A rehearsable script for client demos.
+- Add `rules.yaml` to Architecture section as "the external rule catalog"
+- Note that rules are edited in YAML, not in Python
 
-Contents:
-- Setup instructions (one command)
-- 3-scenario demo script with what to say at each step
-- "What just happened" talking points for each output
-- Anticipated client questions + answers
-- The killer demo moment: showing `track_b=None` and explaining "we didn't even ask the AI"
+## Files to modify
+- `rules.yaml` (new) — the externalized catalog
+- `src/phase1_crucible.py` — replace hardcoded dict with `load_rule_catalog()`
+- `tests/test_arbitration.py` — add catalog loader tests
+- `CLAUDE.md` — reference `rules.yaml`
 
 ## Verification
-- Phase 1: User can predict 4/5 scenarios correctly
-- Phase 2: One-pager fits on a single screen
-- Phase 3: Demo can be rehearsed in under 5 minutes
+1. `python -m pytest tests/ -v` — all 100+ tests pass
+2. `cd src && python main.py --scenario all --dry-run` — same output as before
+3. Edit a threshold in `rules.yaml`, re-run, see the change reflected
