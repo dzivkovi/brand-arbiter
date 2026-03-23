@@ -29,3 +29,4 @@ Gate 3: Arbitrator       Tracks disagree? --> ESCALATED
 3. **Tracks disagree = ESCALATED** -- the system refuses to pick a winner between math and AI
 4. **Worst-case aggregation** -- FAIL > ESCALATED > PASS across rules
 5. **PASS is the hardest result** -- requires math pass + AI pass + high confidence + agreement
+6. **Thresholds live in `rules.yaml`** -- 0.95 parity, 0.25 clear space, 0.85 confidence are config, not code

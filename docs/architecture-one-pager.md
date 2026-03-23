@@ -76,5 +76,7 @@ approval costs a brand relationship.
 | MC-PAR-001 | Logo size parity | Area ratio >= 95% | Visual prominence balance |
 | MC-CLR-002 | Clear space around logo | Edge distance >= 25% of logo width | Crowding, background clutter |
 
-The architecture supports adding new rules by defining thresholds and prompts --
-no pipeline changes needed.
+All rules are defined in `rules.yaml` -- a plain-text config file that the engine
+loads at startup. To add a rule or change a threshold, edit the YAML file. No
+Python code changes needed. The engine is completely decoupled from the brand
+guidelines it enforces.
