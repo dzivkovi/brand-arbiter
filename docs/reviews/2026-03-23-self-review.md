@@ -1,9 +1,9 @@
 # Code Review — Brand Arbiter (2026-03-23)
 
 **Reviewer:** Claude Opus 4.6 (self-review)
-**Status:** Findings recorded, pending mentor consensus before fixing
-**Commit:** `67d7e93` (HEAD of main)
-**Tests:** 104 passing, clean tree
+**Status:** All 4 findings resolved in commit `092672c`
+**Original commit:** `67d7e93` | **Fixed commit:** `092672c`
+**Tests:** 104 → 109 passing (5 new tests from findings 3 and 4)
 
 ## Scope
 
