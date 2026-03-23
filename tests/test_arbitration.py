@@ -24,6 +24,7 @@ from phase1_crucible import (
 )
 
 RULE_CONFIG = RULE_CATALOG["MC-PAR-001"]
+CLR_RULE_CONFIG = RULE_CATALOG["MC-CLR-002"]
 
 
 # ============================================================================
@@ -356,3 +357,80 @@ class TestLearningStore:
         assert rate["total_assessments"] == 0
         assert rate["override_rate"] == 0
         assert rate["needs_recalibration"] is False
+
+
+# ============================================================================
+# Clear Space Rule (MC-CLR-002) — Arbitration Tests
+# ============================================================================
+
+def make_track_a_clearspace(clear_space_ratio, labels=("mastercard", "visa")):
+    """Build TrackAOutput with bboxes producing the given clear_space_ratio.
+
+    MC entity: [0, 0, 100, 100] (width=100).
+    Competitor placed at gap = clear_space_ratio * 100 pixels away.
+    """
+    gap = round(clear_space_ratio * 100)
+    mc_bbox = [0, 0, 100, 100]
+    comp_bbox = [100 + gap, 0, 200 + gap, 100]
+
+    entities = []
+    for label in labels:
+        if label.lower() == "mastercard":
+            entities.append(DetectedEntity(label=label, bbox=mc_bbox))
+        else:
+            entities.append(DetectedEntity(label=label, bbox=comp_bbox))
+
+    return TrackAOutput(rule_id="MC-CLR-002", entities=entities)
+
+
+def make_track_b_clearspace(semantic_pass, confidence, labels=("mastercard", "visa")):
+    return TrackBOutput(
+        rule_id="MC-CLR-002",
+        entities=make_entities(*labels),
+        visual_parity_assessment=semantic_pass,
+        confidence_score=confidence,
+        reasoning_trace="test",
+    )
+
+
+class TestClearSpaceArbitration:
+    """MC-CLR-002: clear space ratio must be >= 0.25."""
+
+    def test_clear_space_both_pass(self):
+        """Distance OK + semantic OK → PASS."""
+        a = make_track_a_clearspace(0.30)
+        b = make_track_b_clearspace(semantic_pass=True, confidence=0.95)
+        result = arbitrate(a, b, CLR_RULE_CONFIG, asset_id="test-clr-pass")
+        assert result.final_result == Result.PASS
+
+    def test_clear_space_track_a_fail_short_circuits(self):
+        """Distance too close → FAIL (short-circuit, Track B irrelevant)."""
+        a = make_track_a_clearspace(0.10)
+        b = make_track_b_clearspace(semantic_pass=True, confidence=0.99)
+        result = arbitrate(a, b, CLR_RULE_CONFIG, asset_id="test-clr-sc")
+        assert result.final_result == Result.FAIL
+        assert "short-circuit" in result.arbitration_log.lower()
+
+    def test_clear_space_track_a_pass_track_b_fail_escalates(self):
+        """Distance OK but semantic says crowded → ESCALATED."""
+        a = make_track_a_clearspace(0.30)
+        b = make_track_b_clearspace(semantic_pass=False, confidence=0.91)
+        result = arbitrate(a, b, CLR_RULE_CONFIG, asset_id="test-clr-disagree")
+        assert result.final_result == Result.ESCALATED
+        assert EscalationReason.TRACKS_DISAGREE.value in result.escalation_reasons[0]
+
+    def test_clear_space_gatekeeper_fires(self):
+        """Distance OK but low confidence → Gatekeeper ESCALATES."""
+        a = make_track_a_clearspace(0.30)
+        b = make_track_b_clearspace(semantic_pass=True, confidence=0.50)
+        result = arbitrate(a, b, CLR_RULE_CONFIG, asset_id="test-clr-gate")
+        assert result.final_result == Result.ESCALATED
+        assert "Gatekeeper" in result.arbitration_log
+
+    def test_clear_space_entity_mismatch_escalates(self):
+        """Entity count mismatch → ESCALATED before any metric check."""
+        a = make_track_a_clearspace(0.30, labels=("mastercard", "visa"))
+        b = make_track_b_clearspace(True, 0.95, labels=("mastercard", "visa", "amex"))
+        result = arbitrate(a, b, CLR_RULE_CONFIG, asset_id="test-clr-entity")
+        assert result.final_result == Result.ESCALATED
+        assert "Entity Reconciliation" in result.arbitration_log

@@ -60,17 +60,41 @@ class TrackAOutput:
     result: Optional[Result] = None
     evidence: str = ""
     area_ratio: Optional[float] = field(default=None, init=False)
+    clear_space_ratio: Optional[float] = field(default=None, init=False)
 
     def __post_init__(self):
-        """Compute area_ratio from entities — single source of truth."""
-        if self.entities:
-            mc = [e for e in self.entities if e.label.lower() == "mastercard"]
-            competitors = [e for e in self.entities if e.label.lower() != "mastercard"]
-            if mc and competitors:
-                mc_area = max(e.area for e in mc)
-                comp_area = max(e.area for e in competitors)
-                if comp_area > 0:
-                    self.area_ratio = mc_area / comp_area
+        """Compute derived metrics from entities — single source of truth."""
+        if not self.entities:
+            return
+
+        mc = [e for e in self.entities if e.label.lower() == "mastercard"]
+        competitors = [e for e in self.entities if e.label.lower() != "mastercard"]
+
+        if not mc or not competitors:
+            return
+
+        # --- Area ratio (MC-PAR-001) ---
+        mc_area = max(e.area for e in mc)
+        comp_area = max(e.area for e in competitors)
+        if comp_area > 0:
+            self.area_ratio = mc_area / comp_area
+
+        # --- Clear space ratio (MC-CLR-002) ---
+        mc_entity = max(mc, key=lambda e: e.area)
+        mc_width = mc_entity.bbox[2] - mc_entity.bbox[0]
+        if mc_width > 0:
+            min_dist = min(_edge_distance(mc_entity.bbox, c.bbox) for c in competitors)
+            self.clear_space_ratio = min_dist / mc_width
+
+
+def _edge_distance(a: list[int], b: list[int]) -> int:
+    """Minimum edge-to-edge gap between two axis-aligned bounding boxes.
+
+    Returns 0 if boxes overlap or are adjacent.
+    """
+    dx = max(0, max(b[0] - a[2], a[0] - b[2]))
+    dy = max(0, max(b[1] - a[3], a[1] - b[3]))
+    return max(dx, dy) if dx == 0 or dy == 0 else min(dx, dy)
 
 
 @dataclass
@@ -99,6 +123,23 @@ class AssessmentOutput:
     arbitration_log: str = ""
 
 
+@dataclass
+class ComplianceReport:
+    """Aggregated result across all rules evaluated for a single asset."""
+    asset_id: str
+    timestamp: str
+    rule_results: list[AssessmentOutput]
+    overall_result: Result  # worst-case: FAIL > ESCALATED > PASS
+
+    @staticmethod
+    def worst_case(results: list[Result]) -> Result:
+        if Result.FAIL in results:
+            return Result.FAIL
+        if Result.ESCALATED in results:
+            return Result.ESCALATED
+        return Result.PASS
+
+
 # ============================================================================
 # Rule Catalog (simplified for Phase 1)
 # ============================================================================
@@ -116,11 +157,25 @@ RULE_CATALOG = {
         "semantic_spec": {
             "confidence_threshold": 0.85,  # System default
         },
-    }
+    },
+    "MC-CLR-002": {
+        "name": "Clear Space",
+        "type": "hybrid",
+        "block": 1,
+        "deterministic_spec": {
+            "metric": "clear_space_ratio",
+            "operator": ">=",
+            "threshold": 0.25,  # 25% of MC logo width
+        },
+        "semantic_spec": {
+            "confidence_threshold": 0.85,
+        },
+    },
 }
 
 # Named constants (Constraint 3: no inline magic numbers)
 PARITY_AREA_THRESHOLD = RULE_CATALOG["MC-PAR-001"]["deterministic_spec"]["threshold"]
+CLEAR_SPACE_THRESHOLD = RULE_CATALOG["MC-CLR-002"]["deterministic_spec"]["threshold"]
 CONFIDENCE_THRESHOLD_DEFAULT = 0.85
 
 
@@ -230,16 +285,21 @@ def arbitrate(
         )
 
     # --- Step 2: Evaluate Track A deterministic result ---
-    threshold = rule_config["deterministic_spec"]["threshold"]
-    if track_a.area_ratio is not None and track_a.area_ratio < threshold:
+    det_spec = rule_config["deterministic_spec"]
+    metric_name = det_spec["metric"]
+    threshold = det_spec["threshold"]
+
+    metric_value = getattr(track_a, metric_name, None) if metric_name != "logo_area_ratio" else track_a.area_ratio
+
+    if metric_value is not None and metric_value < threshold:
         track_a.result = Result.FAIL
         track_a.evidence = (
-            f"Area ratio {track_a.area_ratio:.2f} < threshold {threshold:.2f}"
+            f"{metric_name} {metric_value:.4f} < threshold {threshold}"
         )
     else:
         track_a.result = Result.PASS
         track_a.evidence = (
-            f"Area ratio {track_a.area_ratio:.2f} >= threshold {threshold:.2f}"
+            f"{metric_name} {metric_value:.4f} >= threshold {threshold}"
         )
 
     # --- Step 3: Deterministic short-circuit ---
@@ -291,8 +351,8 @@ def arbitrate(
             final_result=Result.ESCALATED,
             escalation_reasons=[
                 f"{EscalationReason.TRACKS_DISAGREE.value}: "
-                f"Track A PASS (area ratio {track_a.area_ratio:.2f}) but "
-                f"Track B FAIL (visual dominance detected, confidence {track_b.confidence_score:.2f})"
+                f"Track A PASS ({track_a.evidence}) but "
+                f"Track B FAIL (confidence {track_b.confidence_score:.2f})"
             ],
             arbitration_log=" | ".join(log_lines),
         )
