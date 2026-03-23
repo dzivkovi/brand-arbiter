@@ -151,6 +151,30 @@ def _build_short_circuit_assessment(
     )
 
 
+def _build_escalated_assessment(
+    track_a, asset_id: str, reason: str,
+) -> AssessmentOutput:
+    """Build an ESCALATED AssessmentOutput when Track B fails to parse.
+
+    The LLM was consulted but returned unusable output — escalate to
+    human review rather than guessing. track_b is None because the
+    response could not be validated into a TrackBOutput.
+    """
+    return AssessmentOutput(
+        review_id=_generate_review_id(),
+        rule_id=track_a.rule_id,
+        asset_id=asset_id,
+        timestamp=_now(),
+        final_result=Result.ESCALATED,
+        track_a=_serialize_track_a(track_a),
+        track_b=None,
+        arbitration_log=(
+            f"Track B parse failure — escalated to human review"
+        ),
+        escalation_reasons=[f"Track B unusable: {reason}"],
+    )
+
+
 def run_pipeline(
     scenario: str,
     image_path: str,
@@ -188,10 +212,17 @@ def run_pipeline(
             continue
 
         # --- Track B: Semantic (only when Track A passed) ---
-        if dry_run:
-            track_b = mock_track_b_for_scenario(scenario, rule_id=rule_id)
-        else:
-            track_b = call_live_track_b(image_path, rule_id=rule_id)
+        try:
+            if dry_run:
+                track_b = mock_track_b_for_scenario(scenario, rule_id=rule_id)
+            else:
+                track_b = call_live_track_b(image_path, rule_id=rule_id)
+        except (ValueError, Exception) as e:
+            # LLM returned junk or API failed — escalate, don't guess
+            assessment = _build_escalated_assessment(track_a, asset_id, str(e))
+            store.record_assessment(assessment)
+            rule_results.append(assessment)
+            continue
 
         # --- Arbitrator ---
         rule_config = RULE_CATALOG[rule_id]
