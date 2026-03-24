@@ -31,7 +31,10 @@ Every image is evaluated by two independent systems, then their answers are comp
             +-------+-------+            +--------+--------+
                     |                             |
                     |   +---------------------+   |
-                    +-->|    3-GATE SYSTEM     |<--+
+                    +-->|    4-GATE SYSTEM     |<--+
+                        |                     |
+                        | Gate 0: Rules       |-----> ESCALATED
+                        |   collide? (v1.2.0) |  (proven before any image eval)
                         |                     |
                         | Gate 1: Math fails? |-----> FAIL (instant)
                         |         (skip AI)   |
@@ -71,10 +74,29 @@ approval costs a brand relationship.
 
 ## Rules Currently Implemented
 
+### v1.1.0 -- Single Brand (Mastercard)
+
 | Rule | What It Checks | Track A (Math) | Track B (AI) |
 | --- | --- | --- | --- |
 | MC-PAR-001 | Logo size parity | Area ratio >= 95% | Visual prominence balance |
 | MC-CLR-002 | Clear space around logo | Edge distance >= 25% of logo width | Crowding, background clutter |
+
+### v1.2.0 -- Co-Brand Collisions (Mastercard + Barclays)
+
+| Rule | Brand | What It Checks | Track A (Math) | Track B (AI) |
+| --- | --- | --- | --- | --- |
+| BC-DOM-001 | Barclays | Brand dominance in co-brand | Barclays area >= 120% of Mastercard | Visual dominance assessment |
+
+**The SOP Collision:** MC-PAR-001 says "Mastercard must be at least 95% the size
+of any competitor." BC-DOM-001 says "Barclays must be 20% larger than the payment
+network." If Mastercard demands near-equal sizing, Barclays can be at most 5%
+larger. But Barclays demands 20% larger. Those two numbers can never both be true.
+
+Gate 0 detects this conflict automatically from the rule definitions -- before
+looking at any image -- and proves it with simple arithmetic. No designer can
+resolve this; it requires a business-level conversation between the brand teams.
+
+### Rule Configuration
 
 All rules are defined in `rules.yaml` -- a plain-text config file that the engine
 loads at startup. To add a rule or change a threshold, edit the YAML file. No

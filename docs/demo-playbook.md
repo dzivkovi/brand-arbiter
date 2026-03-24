@@ -11,7 +11,10 @@ For live AI mode (optional): `export ANTHROPIC_API_KEY='sk-ant-...'`
 
 ---
 
-## The Demo: 3 Scenarios, 5 Minutes
+## Part 1: Single Brand (v1.1.0) -- 3 minutes
+
+These scenarios show the engine evaluating one brand's rules (Mastercard) against
+marketing assets with competitor logos (Visa).
 
 ### Scene 1: "The Clear Violation" (30 seconds)
 
@@ -94,6 +97,54 @@ Any crack in that chain and the system escalates instead of guessing."
 
 ---
 
+---
+
+## Part 2: Co-Brand Collisions (v1.2.0) -- 2 minutes
+
+This scenario shows what happens when two brands' rules apply to the same asset
+-- and those rules are mathematically impossible to satisfy simultaneously.
+
+### Scene 5: "The SOP Collision" (90 seconds -- the new money shot)
+
+**What to say:** "Now let's look at the real-world problem this engine was built
+to solve. Imagine Barclays and Mastercard are co-branding a credit card campaign.
+Barclays' brand guidelines say their logo must be 20% larger than the payment
+network's. Mastercard's guidelines say their logo must be at least 95% the size
+of any competitor's. Watch what happens when we load both rule sets."
+
+```bash
+python src/main.py --scenario barclays_cobrand --cobrand --dry-run
+```
+
+**What the audience sees:**
+```
+CROSS-BRAND COLLISIONS:
+!! MC-PAR-001 vs BC-DOM-001: ESCALATED (CROSS_BRAND_CONFLICT)
+   Proof: ... 1.0526 < 1.2, no image can satisfy both constraints.
+
+MC-PAR-001: FAIL   (Mastercard's logo is too small -- 83% of Barclays')
+BC-DOM-001: PASS   (Barclays' logo is exactly 20% larger -- what they wanted)
+```
+
+**Talking point:** "The engine proved -- before looking at any image -- that no
+designer can satisfy both brands simultaneously. If Mastercard demands near-equal
+size, Barclays can be at most 5% larger. But Barclays demands 20% larger. Those
+two numbers can never both be true. This is the conversation that normally takes
+weeks of legal review. The engine surfaces it in milliseconds with arithmetic."
+
+**If asked "So what does the team do about it?":**
+"Exactly what you'd do today -- escalate to the brand teams for a business
+decision. But instead of discovering the conflict after a designer has spent two
+weeks iterating on layouts, the engine catches it at the brief stage. The
+conflict is structural, not creative. No amount of design talent can fix math."
+
+**If asked "Does Mastercard always lose in this scenario?":**
+"In this test case, yes -- Barclays is 20% larger, which violates Mastercard's
+parity rule. But that's the point: the engine shows you exactly which brand's
+rules are satisfied and which aren't. The business teams decide who compromises."
+
+---
+
 ## Anticipated Questions
 
 **"Can this handle more than two brands?"**
@@ -117,10 +168,13 @@ prominence, crowding, context). The arbitrator ensures the AI's uncertainty
 never becomes a false-confidence business decision.
 
 **"What's the SOP Collision story?"**
-When Barclays' placement rules say "center the payment mark" but Mastercard's
-clear-space rules say "maintain 25% padding," a human reviewer has to reconcile
-conflicting corporate SOPs. Our engine detects these collisions programmatically
-and routes them to human review with full context from both rule evaluations.
+When two brands co-brand a campaign, their brand guidelines often contradict each
+other. Mastercard says "our logo must be equal size." Barclays says "our logo
+must be 20% larger." A human reviewer stares at this, realizes it's impossible,
+and escalates to legal. That process takes weeks. Our engine reads both rule
+sets, does the arithmetic (if Mastercard demands 95% parity, Barclays can be at
+most 5% larger -- but they demand 20%), and proves the conflict instantly. The
+designer never wastes time on an impossible brief.
 
 ---
 
@@ -151,15 +205,39 @@ We went from one rule to two without changing any pipeline code."
 
 ## The Killer Demo Moment
 
-If you have time for only ONE thing to show, run `hard_case` and point to:
+If you have time for only ONE thing to show, run `barclays_cobrand`:
+
+```bash
+python src/main.py --scenario barclays_cobrand --cobrand --dry-run
+```
+
+Point to:
 
 ```
-tracks_disagree: Track A PASS but Track B FAIL (confidence 0.91)
+!! MC-PAR-001 vs BC-DOM-001: ESCALATED (CROSS_BRAND_CONFLICT)
+   Proof: ... no image can satisfy both constraints.
+MC-PAR-001: FAIL    BC-DOM-001: PASS
 ```
 
-Then say: **"This is the moment where every other system would either silently
-approve or silently reject. Ours says: I found something humans need to see."**
+Then say: **"Two Fortune 500 brands, fighting over the same pixel. The engine
+proved -- with arithmetic, not AI -- that their brand guidelines are
+mathematically incompatible. Mastercard fails. Barclays passes. No designer
+can make both happy. This is the conversation that takes weeks of legal review.
+The engine surfaces it before anyone opens Photoshop."**
 
 Then open `rules.yaml` and say: **"And this is the entire brain of the system.
-Every rule, every threshold, in plain text. The engine doesn't know what
-Mastercard is -- it just enforces whatever's in this file."**
+Every rule, every threshold, every brand, in plain text. To add a new brand's
+rules, you add a block to this file. The engine doesn't know what Mastercard is
+-- it just enforces whatever's in this file."**
+
+### Runner-up (v1.1.0): The Hard Case
+
+If the audience is more technical, also show `hard_case`:
+
+```bash
+python src/main.py --scenario hard_case --dry-run
+```
+
+Point to `tracks_disagree: Track A PASS but Track B FAIL (confidence 0.91)` and
+say: **"The math says pass. The AI says fail. Rather than picking a winner, the
+engine says: I found something humans need to see."**
