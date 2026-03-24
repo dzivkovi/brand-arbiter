@@ -101,7 +101,7 @@ No database, no SaaS tool, no proprietary format. Just files that `git diff`, `g
 | User preferences | `~/.claude/projects/.../memory/` | "User prefers pytest over unittest" |
 | Project backlog | `todos/` | Tech debt, bugs, improvements |
 | Solved problems | `docs/solutions/` | This document |
-| Architectural decisions | `docs/decisions.md` | DEC-003: Static collision detection (must include `Affects:` + `Related debt:` links) |
+| Architectural decisions | `docs/adr/` | ADR-0003: Static collision detection (must include `Affects` + `Related Debt` sections) |
 | Active instructions | `CLAUDE.md` | "Check todos/ before starting" |
 
 ## Workflow Integration
@@ -117,7 +117,7 @@ No database, no SaaS tool, no proprietary format. Just files that `git diff`, `g
 - Never create a single-file backlog that will grow unbounded
 - Always check if Compound Engineering already has a convention before inventing one
 - Every new project: create `todos/`, add backlog instruction to `CLAUDE.md`
-- **ADRs must cross-link to what they affect.** Every entry in `docs/decisions.md` needs an `Affects:` field listing the source files it changed and a `Related debt:` field if it spawned backlog items. Without these links, decisions float disconnected — you can read *what* was decided but not *where* it landed or *what it left behind*. Discovered when DEC-003 (static collision detection) had no links to `rules.yaml`, `phase1_crucible.py`, or the `todos/001` debt item it spawned. A `rg DEC-003` should trace the full chain: decision → files → debt.
+- **ADRs must cross-link to what they affect.** Every ADR in `docs/adr/` needs an `Affects` section listing the source files it changed and a `Related Debt` section if it spawned backlog items. Without these links, decisions float disconnected — you can read *what* was decided but not *where* it landed or *what it left behind*. Discovered when ADR-0003 (static collision detection) had no links to `rules.yaml`, `phase1_crucible.py`, or the `todos/001` debt item it spawned. A `rg ADR-0003` should trace the full chain: decision → files → debt.
 
 ## Cross-References
 

@@ -8,6 +8,10 @@ Before executing any task, you MUST read and strictly adhere to the constraints 
 ## Backlog
 Always check `todos/` before asking for the next task. Files follow the naming convention `{id}-{status}-{priority}-{description}.md` with YAML frontmatter. If you identify technical debt during a refactor, do not fix it immediately without permission; instead, add it as a `pending` todo in `todos/`.
 
+## Architecture Decisions
+
+Architectural decisions are recorded in `docs/adr/` using the Michael Nygard template (`docs/adr/template.md`). When completing a major feature or refactor, proactively offer to write the ADR. Every ADR must include `Affects` (files changed) and `Related Debt` (spawned `todos/` items). Not every change needs an ADR — only decisions where alternatives were rejected.
+
 ## Project Overview
 
 Brand Arbiter is an automated brand compliance engine that splits evaluation into two parallel tracks — deterministic computer vision (Track A) and semantic AI judgment (Track B) — then arbitrates where they overlap. The core safety property: semantic uncertainty is never silently converted to deterministic confidence.
@@ -135,6 +139,6 @@ Note: "Live Track A" and "Real asset testing" are infrastructure milestones that
 - `docs/architecture-one-pager.md` — Visual pipeline overview for exec/demo audiences
 - `docs/demo-playbook.md` — Rehearsable 5-minute demo script with talking points
 - `docs/walkthrough-lab-results.md` — Scenario cheat sheet (predicted vs actual outcomes)
-- `docs/decisions.md` — Architectural decision log
+- `docs/adr/` — Architecture Decision Records (Michael Nygard template, one file per decision)
 
 **Remember: Always validate your code locally and follow specs/agent-rules.md before auto-committing.**

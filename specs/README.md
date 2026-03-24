@@ -16,5 +16,5 @@ Product vision, agent rules, and task specs for Brand Arbiter.
 
 - **Product roadmap:** `brand-compliance-confidence-sketch.md`, Section 6 (Tracer Bullet Execution Plan)
 - **Current status:** `../CLAUDE.md`, Project Phases table
-- **Architectural decisions:** `../docs/decisions.md`
+- **Architectural decisions:** `../docs/adr/`
 - **Backlog:** `../todos/`

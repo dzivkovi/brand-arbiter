@@ -254,7 +254,7 @@ def __post_init__(self):
 
 | Document | Relevance |
 |---|---|
-| [`docs/decisions.md`](../decisions.md) | DEC-001 (short-circuit before Gatekeeper), DEC-002 (Boolean polarity) |
+| [`docs/adr/`](../adr/) | ADR-0001 (short-circuit before Gatekeeper), ADR-0002 (Boolean polarity) |
 | [`plans/elegant-tumbling-pancake.md`](../../../plans/elegant-tumbling-pancake.md) | Phase 2→2.1 remediation plan — the three live failures and their fixes |
 
 ### Source Files
