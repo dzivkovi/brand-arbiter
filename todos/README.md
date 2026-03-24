@@ -1,6 +1,6 @@
 # Backlog (Agent-Native)
 
-This directory is the project's lightweight kanban board, using the [Compound Engineering](https://github.com/every-marketplace/compound-engineering) `file-todos` convention.
+This directory is the project's lightweight kanban board, using the [Compound Engineering](https://github.com/EveryInc/compound-engineering-plugin/) `file-todos` convention.
 
 ## How it works
 
