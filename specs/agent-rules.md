@@ -18,6 +18,6 @@
 * **Sequential Execution:** Do not spawn parallel sub-agents. Write one file, test it, verify it, then move to the next.
 
 ## 4. Architectural Authority
-* **The Blueprint:** All architectural constraints live in `specs/confidence-sketch.md`.
+* **The Blueprint:** All architectural constraints live in `specs/brand-compliance-confidence-sketch.md`.
 * **The Seam:** You are building a dual-track system (Deterministic Track A vs. Semantic Track B). Never merge their logic.
 * **Zero-Inference:** Do not hallucinate external database connections, APIs, or complex UI frameworks.

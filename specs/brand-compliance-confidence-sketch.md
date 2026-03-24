@@ -200,6 +200,8 @@ rules:
 
     arbitration: "track_a_fail_overrides_track_b"
 
+    # NOTE: These paths are illustrative — the refs/ directory does not yet exist.
+    # Create it when real reference assets are sourced for the rule catalog.
     reference_assets:
       approved:
         - path: "refs/parity/approved_001.png"

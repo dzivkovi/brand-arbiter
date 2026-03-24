@@ -5,7 +5,7 @@
 **Goal:** Execute the final three steps sequentially to complete the live pipeline. Do NOT proceed to the next step until the current step's tests pass.
 
 **Step 1: The Deterministic Short-Circuit**
-* Open `src/arbitrator.py`.
+* Open `src/phase1_crucible.py`.
 * Modify the logic: If Track A's deterministic math strictly fails the parity check, it must immediately return `FAIL` and bypass Track B and the Gatekeeper entirely. 
 * Ensure the `test_clear_violation` scenario now correctly outputs `FAIL` instead of `ESCALATED`.
 

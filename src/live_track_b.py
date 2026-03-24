@@ -476,9 +476,10 @@ SCENARIO_IMAGES = {
     "compliant": "../test_assets/parity_compliant.png",
     "three_logos": "../test_assets/parity_three_logos.png",
     "low_res": "../test_assets/parity_low_res_occluded.png",
-    "clear_space_violation": "../test_assets/clearspace_violation.png",
-    "clear_space_compliant": "../test_assets/clearspace_compliant.png",
-    "barclays_cobrand": "../test_assets/barclays_cobrand.png",
+    # TODO: Create these test assets when Clear Space (Phase 2) and Co-Brand (Phase 5) scenarios go live
+    "clear_space_violation": "../test_assets/clearspace_violation.png",  # not yet created
+    "clear_space_compliant": "../test_assets/clearspace_compliant.png",  # not yet created
+    "barclays_cobrand": "../test_assets/barclays_cobrand.png",  # not yet created
 }
 
 SCENARIO_EXPECTED = {
