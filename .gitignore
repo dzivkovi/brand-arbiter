@@ -10,3 +10,7 @@ build/
 .pytest_cache/
 .mypy_cache/
 .claude/settings.local.json
+
+# Proprietary / client-specific files
+consolidated_chat.md
+ai-skill-architecture*
