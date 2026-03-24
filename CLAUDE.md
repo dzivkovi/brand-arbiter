@@ -121,18 +121,18 @@ These are architectural invariants, not guidelines:
 
 > Full roadmap: `specs/brand-compliance-confidence-sketch.md`, Section 6.
 
-| Spec Phase | What | Status |
-|------------|------|--------|
-| Phase 1: The Crucible | Parity + Arbitration (mocked dual-track) | Complete |
-| Phase 2: The Geometry | Clear Space (pure math) | Complete (deterministic only) |
-| Phase 3: The Semantic | Read-Through detection | Not started |
-| Phase 4: The Baseline | Lettercase (OCR + regex) | Not started |
-| Phase 5: The Co-Brand Conflict | Cross-brand SOP collisions (v1.2.0) | Complete (145 tests) |
-| Phase 6: The Learning Loop | Human overrides + recalibration | Partial (store works, no UI) |
-| — | Live Track A (YOLO + OpenCV) | Not started |
-| — | Real asset testing | Not started |
+| Spec Phase | What | Status | Priority |
+|------------|------|--------|----------|
+| Phase 1: The Crucible | Parity + Arbitration (mocked dual-track) | Complete | — |
+| Phase 2: The Geometry | Clear Space (pure math) | Complete (deterministic only) | — |
+| Phase 5: The Co-Brand Conflict | Cross-brand SOP collisions (v1.2.0) | Complete (145 tests) | — |
+| **Live Track A** | **YOLO + OpenCV (real logo detection from images)** | **Not started** | **p1** |
+| **Real asset testing** | **Validate with actual marketing collateral** | **Not started (depends on Live Track A)** | **p1** |
+| Phase 3: The Semantic | Read-Through detection | Not started | p3 |
+| Phase 4: The Baseline | Lettercase (OCR + regex) | Not started | p3 |
+| Phase 6: The Learning Loop | Human overrides + recalibration | Partial (store works, no UI) | p3 |
 
-Note: "Live Track A" and "Real asset testing" are infrastructure milestones that cut across phases, not spec phases themselves. The current pipeline uses mocked bounding boxes for Track A; YOLO/OpenCV replaces the mocks.
+Note: Live Track A is not a spec phase — the spec assumed YOLO would exist from Phase 1. It's the infrastructure that makes every phase work on real images instead of mock bounding boxes. Prioritized to p1 because stakeholder demos require "seeing is believing."
 
 ## Documentation
 

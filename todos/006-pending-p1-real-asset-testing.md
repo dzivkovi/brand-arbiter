@@ -1,6 +1,6 @@
 ---
 status: pending
-priority: p3
+priority: p1
 issue_id: "006"
 tags: [infrastructure, validation, real-assets]
 dependencies: ["005"]
