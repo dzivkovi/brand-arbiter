@@ -14,7 +14,25 @@ Architectural decisions are recorded in `docs/adr/` using the Michael Nygard tem
 
 ## Project Overview
 
-Brand Arbiter is an automated brand compliance engine that splits evaluation into two parallel tracks — deterministic computer vision (Track A) and semantic AI judgment (Track B) — then arbitrates where they overlap. The core safety property: semantic uncertainty is never silently converted to deterministic confidence.
+Brand Arbiter is an automated brand compliance engine that splits evaluation into two tracks — deterministic computer vision and semantic AI judgment — then arbitrates where they overlap. The core safety property: semantic uncertainty is never silently converted to deterministic confidence.
+
+### VLM-First Architecture (ADR-0005)
+
+The VLM (Gemini or Claude) is the primary perception system. A single VLM call per image returns:
+- Detected entities with bounding box coordinates
+- Per-entity bounding box confidence (`high` / `medium` / `low`)
+- Per-rule semantic judgments (pass/fail with reasoning)
+- Extracted text (replaces OCR — see ADR-0006)
+
+When VLM bbox confidence is low, Grounding DINO (Apache 2.0, zero-shot) serves as a precision fallback. Entity reconciliation fires between VLM and DINO detections in this case.
+
+### VLM Provider Abstraction
+
+Brand Arbiter supports multiple VLM providers through a minimal abstraction:
+- **Gemini** (Flash for cost-effective scanning, Pro for accuracy-critical rules)
+- **Claude** (structured outputs via `strict: true`)
+
+Both use API-level structured outputs (ADR-0007). Model selection is empirical — benchmark on actual rules, don't assume newer = better.
 
 ## Commands
 
@@ -42,7 +60,7 @@ cd src && python main.py --scenario all --dry-run
 cd src && python main.py --scenario barclays_cobrand --cobrand --dry-run
 ```
 
-### Run integrated pipeline — live (requires ANTHROPIC_API_KEY)
+### Run integrated pipeline — live (requires API key)
 
 ```bash
 cd src && python main.py --scenario hard_case
@@ -58,40 +76,40 @@ pip install -r requirements.txt
 
 Rules are defined in `rules.yaml` (the single source of truth). The engine loads them at startup — to change a threshold or add a rule, edit the YAML file, not the Python code.
 
-The system processes brand compliance rules through a dual-track pipeline:
+The system processes brand compliance rules through a VLM-first pipeline:
 
-- **Track A (Deterministic):** YOLO object detection + OpenCV measurements → hard PASS/FAIL based on pixel math (e.g., logo area ratios). Currently mocked in Phase 1; YOLO/OpenCV planned for Phase 3.
-- **Track B (Semantic):** Claude Vision API with a structured confidence rubric → confidence-gated PASS/FAIL/ESCALATED. Live in Phase 2 via `live_track_b.py`.
-- **Arbitrator:** Merges both tracks for hybrid rules. Execution order is strict: Entity Reconciliation → Track A evaluation → **Deterministic Short-Circuit** (if Track A FAIL, return immediately — math overrides vibes, Gatekeeper bypassed) → Gatekeeper → Arbitration logic. When Track A says PASS but Track B says FAIL, the result is ESCALATED (never a false-confidence PASS).
-- **Collision Detector:** Static YAML analysis at pipeline startup. Detects mathematically mutually exclusive rules across brand namespaces (e.g., MC-PAR-001 vs BC-DOM-001). Runs before Track A/B — fail fast on structural incompatibility. Collision results are `ESCALATED` with `CROSS_BRAND_CONFLICT` reason but individual rule results are preserved for evidence.
+- **VLM Perception:** Gemini or Claude analyzes the image, returning entities with bounding boxes, semantic judgments, and extracted text in a single call (ADR-0005). When bbox confidence is low, Grounding DINO provides precision fallback.
+- **Deterministic Measurement:** OpenCV/colormath computes exact metrics (area ratios, spacing, colors) from VLM-provided bounding boxes. `evaluate_track_a()` is bbox-agnostic — it doesn't care where coordinates come from.
+- **Arbitrator:** Merges both outputs for hybrid rules. Execution order is strict: Entity Reconciliation → Track A evaluation → **Deterministic Short-Circuit** (if Track A FAIL, return immediately — math overrides vibes, Gatekeeper bypassed) → Gatekeeper → Arbitration logic. When math says PASS but judgment says FAIL, the result is ESCALATED (never a false-confidence PASS).
+- **Collision Detector:** Static YAML analysis at pipeline startup. Detects mathematically mutually exclusive rules across brand namespaces. Runs before perception — fail fast on structural incompatibility.
 
 ### Key components in `src/phase1_crucible.py`
 All domain types, the arbitration engine, and test harness live in one file:
 - `Result` enum: PASS / FAIL / ESCALATED (three-state, never binary)
 - `arbitrate()`: The core function — runs Entity Reconciliation → Track A eval → deterministic short-circuit → Gatekeeper → arbitration logic
-- `gatekeeper()`: Blocks low-confidence Track B results before they reach arbitration
-- `reconcile_entities()`: Ensures both tracks detected the same entities before comparison
+- `gatekeeper()`: Blocks low-confidence results before they reach arbitration
+- `reconcile_entities()`: Ensures both perception sources detected the same entities before comparison
 - `LearningStore`: Records assessments and human overrides; tracks override rates for recalibration signals
 - `CollisionReport`: Cross-brand rule collision with mathematical proof
-- `detect_collisions()`: Static analysis — proves mutual exclusion from YAML thresholds (e.g., `1/0.95 = 1.053 < 1.20`)
+- `detect_collisions()`: Static analysis — proves mutual exclusion from YAML thresholds
 
 ### Key components in `src/live_track_a.py`
 
-- `evaluate_track_a()`: Routes by `rule_id` — parity (area ratio), clear space (edge distance), or brand dominance (subject/reference ratio)
+- `evaluate_track_a()`: Routes by `rule_id` — parity (area ratio), clear space (edge distance), or brand dominance (subject/reference ratio). **Bbox-agnostic** — works identically regardless of bounding box source.
 - `compute_min_edge_distance()`: Calculates pixel gap between two bounding boxes
 
 ### Key components in `src/live_track_b.py`
 
-- `call_live_track_b()`: Sends image to Claude Vision API with structured evaluation prompt, returns `TrackBOutput`
-- `parse_track_b_response()`: Strict schema validator — the parsing firewall between LLM output and domain model. Rejects missing fields, wrong types, out-of-range confidence. Raises `ValueError` on any violation.
+- `call_live_track_b()`: Sends image to VLM with structured evaluation prompt, returns `TrackBOutput`
+- `parse_track_b_response()`: Strict schema validator — the parsing firewall between VLM output and domain model. Rejects missing fields, wrong types, out-of-range confidence. Raises `ValueError` on any violation.
 - `encode_image_base64()`: Converts local images to base64 for API transmission
 - `RULE_PROMPTS`: Maps rule_id to evaluation rubric (parity prompt, clear space prompt)
 
 ### Key components in `src/main.py`
 
-- `run_pipeline()`: Orchestrates Track A → short-circuit check → Track B → Arbitrator for all active rules
-- `_build_short_circuit_assessment()`: Creates FAIL assessment when Track A kills a rule (Track B never called)
-- `_build_escalated_assessment()`: Creates ESCALATED assessment when Track B parse fails (LLM returned junk)
+- `run_pipeline()`: Orchestrates VLM perception → deterministic measurement → arbitration for all active rules
+- `_build_short_circuit_assessment()`: Creates FAIL assessment when Track A kills a rule
+- `_build_escalated_assessment()`: Creates ESCALATED assessment when VLM parse fails
 - `ComplianceReport` output: Per-rule results with worst-case overall aggregation
 
 ## Rule Taxonomy
@@ -99,12 +117,12 @@ All domain types, the arbitration engine, and test harness live in one file:
 Four rule types, each handled differently:
 | Type | Pipeline | Example |
 |------|----------|---------|
-| Hybrid | Track A + Track B → Arbitrator | Logo parity (size + prominence) |
-| Deterministic | Track A only | Clear space (pixel math) |
-| Semantic | Track B only | Read-through (logo used as letter) |
-| Regex | OCR + regex | Lettercase ("Mastercard" not "MasterCard") |
+| Hybrid | Deterministic + Semantic → Arbitrator | Logo parity (size + prominence) |
+| Deterministic | Deterministic only | Clear space (pixel math) |
+| Semantic | Semantic only | Read-through (logo used as letter) |
+| Regex | VLM text extraction + regex | Lettercase ("Mastercard" not "MasterCard") |
 
-Currently implemented: `MC-PAR-001` (Payment Mark Parity, hybrid), `MC-CLR-002` (Clear Space, hybrid), and `BC-DOM-001` (Barclays Brand Dominance, hybrid). MC-PAR-001 and BC-DOM-001 form a collision group — mathematically mutually exclusive on any co-branded asset.
+Currently implemented: `MC-PAR-001` (Payment Mark Parity, hybrid), `MC-CLR-002` (Clear Space, hybrid), and `BC-DOM-001` (Barclays Brand Dominance, hybrid — deprioritized). MC-PAR-001 and BC-DOM-001 form a collision group — mathematically mutually exclusive on any co-branded asset.
 
 ## Safety Constraints
 
@@ -114,25 +132,27 @@ These are architectural invariants, not guidelines:
 3. No magic numbers — all thresholds are named constants from the rule catalog
 4. The Validator cannot invent data — missing fields → ESCALATED, never defaults
 5. Entity Reconciliation runs before any PASS/FAIL comparison
-6. Confidence is rubric-based, not self-reported — LLM follows mechanical penalty deductions
+6. Confidence is rubric-based, not self-reported — VLM follows mechanical penalty deductions
 7. Cross-brand conflicts always escalate to human review
 
 ## Project Phases
 
-> Full roadmap: `specs/brand-compliance-confidence-sketch.md`, Section 6.
-
-| Spec Phase | What | Status | Priority |
-|------------|------|--------|----------|
-| Phase 1: The Crucible | Parity + Arbitration (mocked dual-track) | Complete | — |
-| Phase 2: The Geometry | Clear Space (pure math) | Complete (deterministic only) | — |
-| Phase 5: The Co-Brand Conflict | Cross-brand SOP collisions (v1.2.0) | Complete (145 tests) | — |
-| **Live Track A** | **YOLO + OpenCV (real logo detection from images)** | **Not started** | **p1** |
-| **Real asset testing** | **Validate with actual marketing collateral** | **Not started (depends on Live Track A)** | **p1** |
-| Phase 3: The Semantic | Read-Through detection | Not started | p3 |
-| Phase 4: The Baseline | Lettercase (OCR + regex) | Not started | p3 |
-| Phase 6: The Learning Loop | Human overrides + recalibration | Partial (store works, no UI) | p3 |
-
-Note: Live Track A is not a spec phase — the spec assumed YOLO would exist from Phase 1. It's the infrastructure that makes every phase work on real images instead of mock bounding boxes. Prioritized to p1 because stakeholder demos require "seeing is believing."
+| Phase | What | Status | Priority |
+|-------|------|--------|----------|
+| Architecture Validation | Mocked dual-track + live semantic (13/13 scenarios) | ✅ Complete | — |
+| **VLM Provider Abstraction** | **Gemini + Claude support with structured outputs** | **Not started** | **P1** |
+| **VLM Perception Module** | **Unified perception: bboxes + semantics + text in one call** | **Not started** | **P1** |
+| **VLM Model Benchmark** | **Gemini Flash vs Pro vs Claude Sonnet on compliance rules** | **Not started** | **P1** |
+| **Live Perception** | **VLM-first bounding boxes → Track A (DINO fallback)** | **Not started** | **P1** |
+| **Real Asset Testing** | **Golden dataset of 50+ marketing images** | **Not started** | **P1** |
+| **Installable CLI** | **`brand-arbiter scan <image> --rules <yaml>`** | **Not started** | **P1** |
+| DINO Fallback | Grounding DINO for low-confidence VLM bboxes | Not started | P2 |
+| Rule Groups | Namespace/grouping support in YAML schema | Not started | P2 |
+| Skill Packaging | SKILL.md for Claude Cowork integration | Not started | P2 |
+| Read-Through Detection | Semantic-only rule (Block 3) | Not started | P3 |
+| Lettercase Validation | VLM text extraction + regex (Block 4) | Not started | P3 |
+| MCP Server | Platform integration via Model Context Protocol | Not started | P3 |
+| Learning Loop UI | Human overrides + recalibration | Partial (store works, no UI) | P3 |
 
 ## Documentation
 

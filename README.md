@@ -4,8 +4,6 @@
 
 Brand Arbiter is an open architecture for automated brand compliance that explicitly splits evaluation into two parallel tracks — deterministic computer vision and semantic AI judgment — then safely arbitrates where they overlap.
 
-Every other brand compliance tool treats the problem as either pure measurement or pure vibes. Brand Arbiter is the first architecture that handles both simultaneously, with an explicit arbitration layer that prevents deterministic math from laundering semantic ambiguity into false-confidence results.
-
 ---
 
 ## The Problem
@@ -19,113 +17,155 @@ Most tools do one or the other. The hard problem is the rules that need **both**
 
 Brand Arbiter answers that question with an explicit Arbitrator that never silently converts fuzzy judgment into confident math.
 
+## Why Not Existing Tools?
+
+Existing brand compliance solutions fall into predictable categories — and none solve the hard problem:
+
+- **Pure-AI tools** hallucinate on spatial math. They can tell you a logo "looks small" but can't prove area ratio is 0.69.
+- **Pure-deterministic tools** miss creative judgment. They can measure pixels but can't assess visual prominence or brand feel.
+- **SaaS-only platforms** can't deploy on-premise or in restricted environments.
+- **Proprietary rule builders** lock your brand logic in someone else's system. You can't version-control, PR-review, or audit the rules.
+- **Binary approve/reject systems** have no explicit uncertainty handling. When the system isn't sure, it guesses — and a false approval costs a brand relationship.
+
+Brand Arbiter is the first architecture that combines deterministic CV, semantic AI, and explicit arbitration with transparent 3-state outcomes — deployable anywhere, rules in YAML you own.
+
 ## Architecture
 
 ```
 Input (asset + rule catalog)
-  ├── Track A: Deterministic Pipeline (YOLO → OpenCV → hard PASS/FAIL)
-  ├── Track B: Semantic Pipeline (LLM → confidence-gated PASS/FAIL/ESCALATED)
-  └── Track C: Hybrid Arbitration (both tracks, explicit conflict resolution)
+  │
+  ├── Step 1: VLM Perception
+  │     VLM (Gemini/Claude) → entities + bounding boxes + semantic judgments + text
+  │           ↓ (if bbox confidence low → invoke object detection fallback)
+  │
+  ├── Step 2: Deterministic Measurement
+  │     OpenCV/colormath → area ratios, spacing, color values → hard PASS/FAIL
+  │
+  └── Step 3: Hybrid Arbitration (4-gate system)
         │
-        ├── Entity Reconciliation (do both tracks see the same things?)
-        ├── Gatekeeper (is the LLM confident enough to trust?)
-        └── Arbitrator (when tracks disagree, escalate — don't guess)
+        ├── Gate 0: Rule collision? (proven before image evaluation)
+        ├── Gate 1: Math fails? → FAIL (instant, skip everything else)
+        ├── Gate 2: AI unsure? → ESCALATED (block it)
+        └── Gate 3: Tracks disagree? → ESCALATED (flag it)
               │
               ▼
         PASS | FAIL | ESCALATED (with full audit trail + review_id)
-              │
-              ▼
-        Learning Loop (human overrides improve the system over time)
 ```
+
+**VLM-first approach:** The VLM handles both semantic understanding and object localization in a single call (see [ADR-0005](docs/adr/ADR-0005-vlm-first-perception.md)). Deterministic measurements (OpenCV) operate on VLM-provided bounding boxes. A dedicated object detector (Grounding DINO) serves as a precision fallback when VLM localization confidence is low.
+
+**Multiple VLM providers:** Supports Gemini (Flash, Pro) and Claude via a provider abstraction. Model selection is empirical — benchmark on your actual rules, don't assume newer = better.
 
 ## Key Safety Properties
 
 1. **No laundering of ambiguity.** Semantic uncertainty is never silently converted to deterministic confidence.
 2. **Confidence via structured rubric.** LLMs don't self-report confidence — they follow a mechanical penalty rubric based on observable image conditions.
-3. **Entity reconciliation before arbitration.** If YOLO and the LLM disagree about what's in the image, arbitration halts before it starts.
+3. **Entity reconciliation before arbitration.** If the VLM and the fallback detector disagree about what's in the image, arbitration halts before it starts.
 4. **The Validator cannot invent data.** Missing fields → ESCALATED, never default values.
 5. **Cross-brand conflicts always escalate.** Co-branded assets with conflicting rule catalogs require human arbitration.
+6. **Measurement uncertainty escalates.** When a deterministic metric falls within the bbox error margin of a threshold, the system ESCALATEs rather than committing a verdict on imprecise data.
 
-## Project Status
+## 4 Structural Advantages
 
-| Phase | Description | Status |
-|-------|-------------|--------|
-| Phase 1 | Mocked dual-track arbitration logic | ✅ 5/5 tests passing |
-| Phase 2 | Live semantic pipeline (Claude Vision API) | 🔧 Built, needs API key to run |
-| Phase 3 | Live deterministic pipeline (YOLO + OpenCV) | ⬜ Not started |
-| Phase 4 | Integration + real asset testing | ⬜ Not started |
+These are architectural moats, not features. They require rebuild, not bolt-on.
+
+1. **Deterministic + Semantic + Arbitration** — Most tools are pure-AI or pure-deterministic. Brand Arbiter does both with transparent conflict resolution.
+2. **Deployable anywhere** — Runs on any infrastructure. No vendor lock-in. Supports restricted environments through provider abstraction.
+3. **YAML-driven open rules** — Rules are version-controlled, PR-reviewable, auditable code. No proprietary rule builders.
+4. **3-state outcomes** — PASS / FAIL / ESCALATED. The system explicitly says "I don't know" instead of guessing.
+
+## Roadmap
+
+| Phase | Goal | Status |
+|-------|------|--------|
+| **Architecture Validation** | Prove dual-track arbitration works (mocked + live semantic) | ✅ Complete (13/13 scenarios correct) |
+| **Phase 1: Case Study** | Live perception on real assets, enterprise rule catalog | 🔧 In progress |
+| **Phase 2: Distribution** | CLI + Anthropic Skill + community rule catalogs | ⬜ Planned |
+| **Phase 3: Productization** | API service, per-scan pricing | ⬜ Future |
+| **Phase 4: Enterprise** | On-premise deployment, multi-brand governance | ⬜ Future |
+
+**Distribution priority:** CLI first (demos + AI-teachable) → Skill (beta users via Claude Cowork) → MCP server (platform integrations after product-market fit).
+
+**Scale target:** Designed for enterprise rule catalogs with 100+ rules per brand, organized into groups/namespaces.
 
 ## Quick Start
 
-### Phase 1: Test the arbitration logic (no API keys needed)
+### Run tests (no API keys needed)
+
+```bash
+python -m pytest tests/ -v
+```
+
+### Phase 1: Test the arbitration logic
 
 ```bash
 cd src
 python phase1_crucible.py
 ```
 
-This runs 5 scenarios with mocked Track A and Track B data, proving the Arbitrator, Gatekeeper, Entity Reconciliation, and Learning Loop work correctly — including the critical case where deterministic PASS + semantic FAIL = ESCALATED.
+Runs 5 scenarios with mocked data, proving the Arbitrator, Gatekeeper, Entity Reconciliation, and Learning Loop work correctly.
 
-### Phase 2: Live semantic pipeline
+### Integrated pipeline (dry-run, no API key needed)
 
 ```bash
-export ANTHROPIC_API_KEY="sk-ant-..."
 cd src
-python live_track_b.py --scenario hard_case     # the architectural thesis test
-python live_track_b.py --scenario all            # run all 5 scenarios
+python main.py --scenario hard_case --dry-run
+python main.py --scenario all --dry-run
+python main.py --scenario barclays_cobrand --cobrand --dry-run
 ```
+
+### Integrated pipeline (live, requires API key)
+
+```bash
+export ANTHROPIC_API_KEY="sk-ant-..."   # or GEMINI_API_KEY
+cd src
+python main.py --scenario hard_case
+```
+
+## Rule Taxonomy
+
+Brand Arbiter classifies every brand rule into one of four types:
+
+| Type | Example | Pipeline | Risk |
+|------|---------|----------|------|
+| **Hybrid** | Logo parity (size + prominence) | Deterministic + Semantic → Arbitrator | Highest |
+| **Deterministic** | Clear space (pixel math) | Deterministic only | Medium |
+| **Semantic** | Read-through (logo used as letter) | Semantic only | Medium |
+| **Regex** | Lettercase ("Mastercard" not "MasterCard") | VLM text extraction + regex | Lowest |
 
 ## Repo Structure
 
 ```
 brand-arbiter/
-  specs/
-    brand-compliance-confidence-sketch.md    # Full architectural specification
   src/
-    phase1_crucible.py           # Proven arbitration engine (mocked tracks)
-    live_track_b.py              # Live Claude Vision API integration
-  test_assets/
-    parity_clear_violation.png   # MC much smaller than Visa
-    parity_hard_case.png         # Equal area, Visa dominates placement
-    parity_compliant.png         # Balanced horizontal layout
-    parity_three_logos.png       # MC, Visa, and small Amex
-    parity_low_res_occluded.png  # Low-res, MC partially occluded
+    phase1_crucible.py           # Arbitration engine + domain types
+    live_track_a.py              # Deterministic measurements (bbox-agnostic)
+    live_track_b.py              # VLM semantic integration
+    main.py                      # Pipeline orchestrator
+  specs/
+    brand-compliance-confidence-sketch.md    # Full specification (v3.0)
+  docs/
+    architecture-one-pager.md    # Visual pipeline overview
+    demo-playbook.md             # 5-minute demo script
+    adr/                         # Architecture Decision Records
+  todos/                         # Backlog (file-todos convention)
+  rules.yaml                    # Single source of truth for all rules
+  test_assets/                   # Test images
+  tests/                         # 145+ unit and integration tests
 ```
-
-## Rule Taxonomy
-
-Brand Arbiter classifies every brand rule into one of four types, each handled by a different processing block:
-
-| Type | Example | Pipeline | Risk |
-|------|---------|----------|------|
-| **Hybrid** | Logo parity (size + prominence) | Track A + Track B → Arbitrator | Highest |
-| **Deterministic** | Clear space (pixel math) | Track A only | Medium |
-| **Semantic** | Read-through (logo used as letter) | Track B only | Medium |
-| **Regex** | Lettercase ("Mastercard" not "MasterCard") | OCR + regex | Lowest |
-
-## Specification
-
-The full architectural specification lives in [`specs/brand-compliance-confidence-sketch.md`](specs/brand-compliance-confidence-sketch.md). It covers:
-
-- Information flow with parallel tracks
-- All 6 composable blocks (4 rule types + Arbitrator + Learning Loop)
-- 7 safety constraints
-- Evaluation contract (accuracy + safety + learning)
-- Tracer bullet execution plan (6 phases)
-- Rule catalog schema (YAML)
-- Public data sources (clean hands policy)
-- Universality check across industries
 
 ## Built With
 
 - Python 3.11+
-- [Anthropic SDK](https://github.com/anthropics/anthropic-sdk-python) (Phase 2: semantic pipeline)
-- [Pillow](https://python-pillow.org/) (test asset generation)
-- YOLO / OpenCV / colormath (Phase 3: deterministic pipeline — planned)
+- [Anthropic SDK](https://github.com/anthropics/anthropic-sdk-python) / [Google Generative AI](https://ai.google.dev/) (VLM providers)
+- [Pillow](https://python-pillow.org/) (image handling)
+- OpenCV / colormath (deterministic measurements)
 
 ## Origin
 
-Brand Arbiter grew out of the [AI Skill Architecture V4](specs/brand-compliance-confidence-sketch.md#appendix-a-relationship-to-parent-architecture) blueprint — a universal pattern for business process automation that combines deterministic rules with semantic AI judgment. The architecture was validated against public [Mastercard Brand Center](https://www.mastercard.com/brandcenter/ca/en/brand-requirements/mastercard.html) guidelines but is designed to be brand-agnostic: swap the rule catalog and reference assets, and the engine works for any brand with measurable + subjective compliance rules.
+Brand Arbiter grew out of a universal pattern for business process automation that combines deterministic rules with semantic AI judgment. The architecture was validated against public [Mastercard Brand Center](https://www.mastercard.com/brandcenter/ca/en/brand-requirements/mastercard.html) guidelines but is designed to be brand-agnostic: swap the rule catalog and reference assets, and the engine works for any brand with measurable + subjective compliance rules.
+
+Applicable domains: financial services, franchising, consumer brands, luxury goods, pharmaceuticals — any industry where brand compliance has both measurable and subjective components.
 
 ## Author
 

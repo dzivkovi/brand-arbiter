@@ -1,12 +1,28 @@
-# Confidence Sketch v2: Proposal-Commit Brand Compliance
+# Confidence Sketch v3: Proposal-Commit Brand Compliance
 
 **Author:** Daniel Zivkovic, Magma Inc.
 **Date:** March 21, 2026
-**Version:** 2.2 (v1: initial sketch → v2: corrected actor assignments, added learning loop, multi-brand arbitration, reference asset library → v2.1: added structured confidence rubric, entity reconciliation → v2.2: deterministic short-circuit, prompt polarity clarification)
+**Version:** 3.0 (v1: initial sketch → v2: corrected actor assignments, added learning loop, multi-brand arbitration, reference asset library → v2.1: added structured confidence rubric, entity reconciliation → v2.2: deterministic short-circuit, prompt polarity clarification → v3.0: VLM-first perception, multi-provider support, OCR elimination, 4-phase business roadmap)
 **Status:** Ready for Story Breakdown & Prototyping
 **Domain:** Brand Compliance Automation (validated against Mastercard public guidelines; designed for any brand with measurable + subjective rules)
 **Architectural Pattern:** Proposal-Commit (EIP: Intelligent Message Translator → Deterministic Channel Adapter)
 **Parent Blueprint:** AI Skill Architecture V4 — Universal Core
+
+---
+
+### Changelog: v2.2 → v3.0
+
+**VLM-First Perception (ADR-0005):** The VLM (Gemini or Claude) is now the primary source of both object localization (bounding boxes) and semantic judgment. A single VLM call per image replaces the previous assumption of a dedicated object detection model (YOLO) for Track A input. Grounding DINO (Apache 2.0, zero-shot) serves as a precision fallback when VLM bounding box confidence is low. YOLO eliminated due to AGPL licensing incompatibility with open-source distribution.
+
+**VLM Text Extraction (ADR-0006):** Block 4 (Lettercase/Regex) now uses VLM-extracted text instead of a dedicated OCR pipeline. No PaddleOCR/Tesseract dependencies. VLMs extract text as a side effect of visual understanding at comparable or superior accuracy.
+
+**Multi-Provider Support (ADR-0007):** Provider abstraction supports Gemini (Flash, Pro) and Claude via structured outputs. Both providers offer API-level JSON schema compliance (Gemini `response_schema`, Claude `strict: true`). Model selection is empirical — benchmark on actual rules, don't assume newer = better.
+
+**4-Phase Business Roadmap:** Replaced 6 technical phases with 4 business phases: Case Study → Open-Source Distribution → Productization → Enterprise Sales. Technical milestones (Crucible, Geometry, etc.) become sub-milestones within Phase 1.
+
+**Distribution Roadmap:** CLI first (demos + AI-teachable) → Anthropic Skill (beta users via Claude Cowork) → MCP server (platform integrations after product-market fit).
+
+**Rule Catalog Scale:** Added rule group/namespace concept. Designed for enterprise catalogs with 100+ rules per brand.
 
 ---
 
@@ -27,17 +43,16 @@
 ```
 Input (asset image + text + rule catalog)
     │
-    ├──► Track A: Deterministic Pipeline
-    │    Object detection (YOLO/fine-tuned) → CV measurement (OpenCV/colormath)
+    ├──► Step 1: VLM Perception (Gemini/Claude)
+    │    Single VLM call → entities + bounding boxes + semantic judgments + extracted text
+    │    If bbox confidence low → invoke Grounding DINO fallback for precision
+    │
+    ├──► Step 2: Deterministic Measurement (OpenCV/colormath)
+    │    Operates on VLM-provided bounding boxes
     │    Produces: exact measurements, pixel coordinates, color values
     │    Output: hard PASS/FAIL per deterministic rule, with measurement evidence
     │
-    ├──► Track B: Semantic Pipeline
-    │    Multimodal LLM evaluates subjective rules (tone, read-through, brand feel)
-    │    Produces: Boolean judgments + mandatory confidence scores
-    │    Output: PASS/FAIL/ESCALATED per semantic rule, with reasoning
-    │
-    └──► Track C: Hybrid Arbitration (where both tracks evaluate the same rule)
+    └──► Step 3: Hybrid Arbitration (where both evaluations apply to the same rule)
          Deterministic provides measurements, Semantic provides interpretation
          Arbitrator merges results with explicit conflict resolution
          Output: PASS/FAIL/ESCALATED with evidence from both tracks
@@ -54,7 +69,7 @@ Commit: Final state per rule (PASS | FAIL | ESCALATED)
 Learning Loop: Human overrides feed back into evaluation datasets
 ```
 
-**Key architectural principle:** Track A and Track B run independently. They only interact at Track C (Hybrid rules), where explicit arbitration logic resolves disagreements. The Gatekeeper applies only to outputs that contain semantic confidence scores — Track A's deterministic outputs bypass the Gatekeeper because they carry measurement certainty, not probability.
+**Key architectural principle:** VLM perception is the upstream data source for both semantic and deterministic evaluation. The VLM provides bounding boxes (for deterministic math) and semantic judgments (for subjective assessment) in a single call. These two evaluation paths only interact at the Arbitration step (Hybrid rules), where explicit logic resolves disagreements. The Gatekeeper applies only to outputs that contain semantic confidence scores — deterministic outputs bypass the Gatekeeper because they carry measurement certainty, not probability.
 
 ---
 
@@ -68,8 +83,8 @@ Six blocks. Four rule-processing patterns (ordered by architectural risk), one a
 
 > **Why highest risk:** This is the only block where Track A and Track B MUST agree before committing. A deterministic measurement can say "areas are equal" while the semantic assessment says "Visa visually dominates due to color weight and placement." Neither alone is sufficient.
 
-- **Track A (Deterministic):** YOLO detects all payment logos in the asset. OpenCV calculates pixel area `(width × height)` for each detected logo. Produces exact area ratios.
-- **Track B (Semantic):** LLM evaluates subjective parity dimensions that pixel math cannot capture: visual prominence, color weight, placement hierarchy, and whether one brand "feels" dominant despite equal sizing. Returns judgment + `confidence_score`.
+- **Track A (Deterministic):** VLM-provided bounding boxes identify all payment logos in the asset (see ADR-0005). OpenCV calculates pixel area `(width × height)` for each detected logo. Produces exact area ratios. When VLM bbox confidence is low, Grounding DINO provides precision fallback.
+- **Track B (Semantic):** VLM evaluates subjective parity dimensions that pixel math cannot capture: visual prominence, color weight, placement hierarchy, and whether one brand "feels" dominant despite equal sizing. Returns judgment + `confidence_score`.
 - **Arbitration logic (execution order):**
   1. Entity Reconciliation: verify both tracks detected the same entities (Constraint 7)
   2. Track A deterministic evaluation: compute PASS/FAIL from area ratio vs threshold
@@ -96,7 +111,7 @@ This pattern applies universally: franchise co-branding, payment mark parity on 
 > **Rule source:** "Surround the Mastercard Symbol with clear space of at least 1/4 the width of one of the circles within the Symbol."
 
 - **Track A only (fully deterministic — no LLM involvement):**
-  - YOLO detects the brand symbol and the nearest non-symbol element
+  - VLM-provided bounding boxes identify the brand symbol and the nearest non-symbol element (or Grounding DINO when precision is needed)
   - OpenCV calculates the distance between their bounding boxes
   - OpenCV calculates circle width as `symbol_width × 0.5` (the Symbol is two overlapping circles; one circle ≈ half the total symbol width)
   - Asserts: `distance >= circle_width × 0.25`
@@ -119,8 +134,8 @@ This pattern applies universally: franchise co-branding, payment mark parity on 
 
 > **Rule source:** "When referencing Mastercard in text, use an uppercase 'M' and lowercase 'c' with no space between 'Master' and 'card'. The name must not appear with a capital 'C'."
 
-- **Track A only (deterministic — OCR + regex):**
-  - OCR extracts all text from the asset (can use LLM vision or dedicated OCR engine for extraction, but the validation is pure regex)
+- **Track A only (deterministic — VLM text extraction + regex):**
+  - VLM extracts all text from the asset as part of its unified perception call (ADR-0006). No dedicated OCR library needed — VLMs extract text as a side effect of visual understanding.
   - Regex matches against extracted strings
   - Reject patterns: `MasterCard`, `Master Card`, `Master card`, `mastercard` (all lowercase when surrounding text is mixed case)
   - Accept patterns: `Mastercard`, or all-caps `MASTERCARD` only if surrounding text is also all-caps
@@ -265,7 +280,7 @@ The Deterministic Pipeline must use strict comparison operators (`>`, `<`, `>=`,
 
 ### Constraint 4: The Validator Cannot Invent Data
 
-If any upstream component fails to return a required field (e.g., YOLO fails to detect a logo, LLM returns `null` for a bounding box), the system must not substitute a default value. It must emit `ESCALATED` with reason `"missing_required_field"` and the component that failed. The system's job is to assess data it receives — never to generate data a component failed to provide.
+If any upstream component fails to return a required field (e.g., VLM fails to detect a logo, returns `null` for a bounding box), the system must not substitute a default value. It must emit `ESCALATED` with reason `"missing_required_field"` and the component that failed. The system's job is to assess data it receives — never to generate data a component failed to provide.
 
 ### Constraint 5: Cross-Brand Conflicts Always Escalate
 
@@ -297,7 +312,7 @@ The rubric itself is part of the rule catalog — different rule types may have 
 
 Before the Arbitrator compares Track A and Track B judgments for any Hybrid rule, it must verify that both tracks detected the **same entities** (same count, same classifications).
 
-**The problem this solves:** Because Track A (YOLO) and Track B (LLM) perceive the image through fundamentally different models, they can disagree about what is IN the image, not just how to evaluate it. YOLO might miss a small Amex logo that the LLM spots. The LLM might hallucinate a logo that isn't there. Comparing PASS/FAIL judgments across mismatched entity sets produces meaningless results.
+**The problem this solves:** When multiple perception sources are used (VLM primary + Grounding DINO fallback), they can disagree about what is IN the image, not just how to evaluate it. The VLM might miss a small Amex logo that DINO spots. The VLM might hallucinate a logo that isn't there. Comparing PASS/FAIL judgments across mismatched entity sets produces meaningless results. In the VLM-only path (no fallback needed), entity reconciliation is trivially satisfied since both tracks use the same VLM-provided entities.
 
 **Required behavior:**
 - If Track A detects N entities and Track B detects M entities where N ≠ M: emit `ESCALATED` with reason `"track_entity_mismatch"` and attach both entity lists
@@ -311,11 +326,11 @@ Before the Arbitrator compares Track A and Track B judgments for any Hybrid rule
 The system must satisfy three classes of requirements: accuracy, safety, and learning.
 
 ### Accuracy Requirements
-- Block 1 (Parity — Deterministic track): YOLO must correctly identify and bound all payment logos in ≥ 90% of test assets
-- Block 1 (Parity — Semantic track): LLM visual dominance assessment must agree with human judgment in ≥ 85% of test cases
-- Block 2 (Clear Space): YOLO bounding box must be accurate within 5% pixel margin on ≥ 95% of test assets
-- Block 3 (Read-Through): LLM must correctly classify read-through usage in ≥ 90% of test assets
-- Block 4 (Lettercase): OCR + Regex must achieve ≥ 99% accuracy on extracted text
+- Block 1 (Parity — Deterministic track): VLM perception must correctly identify and bound all payment logos in ≥ 90% of test assets (IoU ≥ 0.85 against ground truth)
+- Block 1 (Parity — Semantic track): VLM visual dominance assessment must agree with human judgment in ≥ 85% of test cases
+- Block 2 (Clear Space): VLM bounding boxes must be accurate within 5% pixel margin on ≥ 95% of test assets (if insufficient, Grounding DINO fallback activates)
+- Block 3 (Read-Through): VLM must correctly classify read-through usage in ≥ 90% of test assets
+- Block 4 (Lettercase): VLM text extraction + Regex must achieve ≥ 99% accuracy on extracted text
 
 ### Safety Requirements (Non-Negotiable)
 - **Zero silent false-passes on ambiguous inputs.** When the Semantic Pipeline is uncertain, the system must escalate rather than commit.
@@ -342,7 +357,7 @@ Build and test in this exact order. The sequence is deliberate: start with the h
 **Test asset:** A promotional banner containing a Mastercard Symbol and a Visa logo. The Mastercard Symbol is rendered at 90% of the Visa logo's pixel area, with the Mastercard Symbol positioned in the lower-right corner while Visa occupies center-top.
 
 **What this proves:**
-- YOLO detects both logos and produces accurate bounding boxes
+- VLM perception detects both logos and produces accurate bounding boxes
 - OpenCV calculates area ratio correctly (should be ~0.90, below the 0.95 threshold)
 - Track A deterministic result: `FAIL` (area ratio below threshold)
 - Track B semantic result: `FAIL` (visual hierarchy also favors Visa) with confidence score
@@ -364,7 +379,7 @@ Build and test in this exact order. The sequence is deliberate: start with the h
 **Test assets:** Two images — one with adequate clear space around the Symbol, one with promotional text encroaching within the `symbol_width × 0.125` zone.
 
 **What this proves:**
-- YOLO correctly isolates the Symbol from surrounding elements
+- VLM perception correctly isolates the Symbol from surrounding elements (with bounding boxes)
 - The formula `distance >= symbol_width × 0.125` correctly distinguishes compliant from non-compliant spacing
 - This is a fully deterministic block — no LLM, no confidence scores, no Gatekeeper. Pure measurement.
 
@@ -386,9 +401,9 @@ Build and test in this exact order. The sequence is deliberate: start with the h
 **Test assets:** Text samples containing "MasterCard", "Master Card", "Mastercard", and "MASTERCARD" in an all-caps context.
 
 **What this proves:**
-- OCR extraction is reliable
+- VLM text extraction is reliable (text extracted from VLM's unified perception call — no separate OCR library)
 - Regex correctly rejects known-bad patterns and accepts known-good patterns
-- No LLM involved — pure deterministic text processing
+- Validation is pure deterministic text processing (the extraction uses the VLM, but the regex matching is deterministic)
 
 ### Phase 5: The Co-Brand Conflict (Block 1 + Constraint 5)
 
@@ -437,7 +452,7 @@ This architecture is designed to be brand-agnostic. The following test validates
 | Component | Mastercard | Any Financial Institution | Any Consumer Brand | Any Franchise |
 |---|---|---|---|---|
 | Rule Catalog | Brand compliance rules (YAML) | Basel/regulatory + brand rules | Brand book + legal disclaimers | Franchise operations manual |
-| Deterministic Engine | OpenCV + colormath + YOLO | Same + document layout analysis | Same | Same + packaging specs |
+| Deterministic Engine | OpenCV + colormath + VLM bboxes | Same + document layout analysis | Same | Same + packaging specs |
 | Semantic Engine | Tone, premium feel, messaging | Regulatory language compliance | Brand personality, lifestyle fit | Local adaptation within brand bounds |
 | Hybrid Arbitration | Parity at checkout | Multi-regulator compliance overlap | Co-brand partnerships | Franchisee vs. franchisor brand tension |
 | Learning Loop | Agency override patterns | Audit finding patterns | Campaign performance correlation | Franchisee compliance trends |

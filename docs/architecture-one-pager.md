@@ -8,9 +8,11 @@ brand placement rules from multiple card networks -- Mastercard, Visa, and other
 When rules from different brands conflict ("SOP Collisions"), it flags the conflict
 for human review instead of guessing.
 
-## How It Works: The Dual-Track Pipeline
+## How It Works: VLM-First Pipeline
 
-Every image is evaluated by two independent systems, then their answers are compared:
+A single VLM call handles both perception and semantic judgment. Deterministic
+math operates on VLM-provided bounding boxes. A fallback detector refines
+precision when needed.
 
 ```
                           +------------------+
@@ -19,34 +21,43 @@ Every image is evaluated by two independent systems, then their answers are comp
                           +--------+---------+
                                    |
                     +--------------+--------------+
-                    |                             |
-            +-------v-------+            +--------v--------+
-            |   TRACK A     |            |    TRACK B      |
-            |   Hard Math   |            |    AI Vision    |
-            |               |            |                 |
-            | Pixel areas,  |            | Claude analyzes |
-            | distances,    |            | visual balance, |
-            | ratios        |            | prominence,     |
-            |               |            | crowding        |
-            +-------+-------+            +--------+--------+
-                    |                             |
-                    |   +---------------------+   |
-                    +-->|    4-GATE SYSTEM     |<--+
-                        |                     |
-                        | Gate 0: Rules       |-----> ESCALATED
-                        |   collide? (v1.2.0) |  (proven before any image eval)
-                        |                     |
-                        | Gate 1: Math fails? |-----> FAIL (instant)
-                        |         (skip AI)   |
-                        |                     |
-                        | Gate 2: AI unsure?  |-----> ESCALATED
-                        |         (block it)  |
-                        |                     |
-                        | Gate 3: Disagree?   |-----> ESCALATED
-                        |         (flag it)   |
-                        |                     |
-                        | All clear?          |-----> PASS
-                        +---------------------+
+                    |              |              |
+          +---------v---------+    |   +----------v----------+
+          |  VLM PERCEPTION   |    |   | DETERMINISTIC MATH  |
+          |  (Gemini/Claude)  |    |   |  (OpenCV/colormath) |
+          |                   |    |   |                     |
+          | Entities + bboxes |    |   | Area ratios,        |
+          | Semantic judgment |    |   | distances,          |
+          | Extracted text    |    |   | color values        |
+          | Bbox confidence   |    |   |                     |
+          +---------+---------+    |   +---------+-----------+
+                    |              |             |
+                    |   +----------v--------+    |
+                    |   | DINO FALLBACK     |    |
+                    |   | (bbox conf low?)  |    |
+                    |   | Grounding DINO    |    |
+                    |   | → precision bboxes|    |
+                    |   +---------+---------+    |
+                    |             |              |
+                    +------+------+------+-------+
+                           |             |
+                    +------v-------------v------+
+                    |      4-GATE SYSTEM        |
+                    |                           |
+                    | Gate 0: Rules             |-----> ESCALATED
+                    |   collide? (v1.2.0)       |  (proven before any image eval)
+                    |                           |
+                    | Gate 1: Math fails?       |-----> FAIL (instant)
+                    |         (skip semantics)  |
+                    |                           |
+                    | Gate 2: AI unsure?        |-----> ESCALATED
+                    |         (block it)        |
+                    |                           |
+                    | Gate 3: Disagree?         |-----> ESCALATED
+                    |         (flag it)         |
+                    |                           |
+                    | All clear?                |-----> PASS
+                    +---------------------------+
 ```
 
 ## Three Possible Outcomes
@@ -57,11 +68,28 @@ Every image is evaluated by two independent systems, then their answers are comp
 | **FAIL** | Math says no. Unambiguous violation. AI not consulted. | Designer fixes the asset |
 | **ESCALATED** | Uncertainty detected. System refuses to guess. | Human reviewer decides |
 
+## VLM-First Perception (ADR-0005)
+
+The VLM (Gemini or Claude) handles both object localization AND semantic judgment
+in a single call. This simplifies the pipeline:
+
+- **Before:** Dedicated detector (YOLO) → OpenCV → then separately → VLM → semantic
+- **After:** VLM → bboxes + semantic → OpenCV uses VLM bboxes → Arbitrator
+
+**Why this works:** `evaluate_track_a()` is bbox-agnostic — it computes area ratios
+and distances from any bounding box coordinates. It doesn't care whether they came
+from YOLO, Grounding DINO, or a VLM.
+
+**When DINO fallback triggers:** If the VLM reports low confidence on its bounding
+box coordinates, Grounding DINO (Apache 2.0, zero-shot, self-hosted) provides a
+second, independent localization. Entity reconciliation fires between the two
+sources — if they disagree about what's in the image, the result is ESCALATED.
+
 ## Why This Matters
 
-**The problem:** When Barclays' placement rules collide with Mastercard's clear-space
-rules, human reviewers freeze. Campaigns are delayed for weeks while legal, brand,
-and compliance teams debate.
+**The problem:** When one brand's placement rules collide with another brand's
+clear-space rules, human reviewers freeze. Campaigns are delayed for weeks while
+legal, brand, and compliance teams debate.
 
 **Our solution:** Brand Arbiter maps both rule sets into a single pipeline, detects
 the collision programmatically, and routes only the genuinely ambiguous cases to
@@ -76,14 +104,14 @@ approval costs a brand relationship.
 
 ### v1.1.0 -- Single Brand (Mastercard)
 
-| Rule | What It Checks | Track A (Math) | Track B (AI) |
+| Rule | What It Checks | Deterministic (Math) | Semantic (AI) |
 | --- | --- | --- | --- |
 | MC-PAR-001 | Logo size parity | Area ratio >= 95% | Visual prominence balance |
 | MC-CLR-002 | Clear space around logo | Edge distance >= 25% of logo width | Crowding, background clutter |
 
 ### v1.2.0 -- Co-Brand Collisions (Mastercard + Barclays)
 
-| Rule | Brand | What It Checks | Track A (Math) | Track B (AI) |
+| Rule | Brand | What It Checks | Deterministic (Math) | Semantic (AI) |
 | --- | --- | --- | --- | --- |
 | BC-DOM-001 | Barclays | Brand dominance in co-brand | Barclays area >= 120% of Mastercard | Visual dominance assessment |
 
@@ -102,3 +130,6 @@ All rules are defined in `rules.yaml` -- a plain-text config file that the engin
 loads at startup. To add a rule or change a threshold, edit the YAML file. No
 Python code changes needed. The engine is completely decoupled from the brand
 guidelines it enforces.
+
+Designed for enterprise scale: 100+ rules per brand, organized into
+groups/namespaces for manageable catalogs.
