@@ -16,17 +16,17 @@ Date: March 21, 2026
 
 import json
 import uuid
-import yaml
-from datetime import datetime, timezone
-from dataclasses import dataclass, field, asdict
+from dataclasses import asdict, dataclass, field
+from datetime import UTC, datetime
 from enum import Enum
 from pathlib import Path
-from typing import Optional
 
+import yaml
 
 # ============================================================================
 # Domain Types
 # ============================================================================
+
 
 class Result(Enum):
     PASS = "PASS"
@@ -47,7 +47,7 @@ class EscalationReason(Enum):
 class DetectedEntity:
     label: str
     bbox: list[int]  # [x1, y1, x2, y2]
-    area: Optional[int] = None  # width * height, calculated from bbox
+    area: int | None = None  # width * height, calculated from bbox
 
     def __post_init__(self):
         if self.area is None and len(self.bbox) == 4:
@@ -57,13 +57,14 @@ class DetectedEntity:
 @dataclass
 class TrackAOutput:
     """Deterministic pipeline output — measurements, no confidence scores."""
+
     rule_id: str
     entities: list[DetectedEntity]
-    result: Optional[Result] = None
+    result: Result | None = None
     evidence: str = ""
-    area_ratio: Optional[float] = field(default=None, init=False)
-    clear_space_ratio: Optional[float] = field(default=None, init=False)
-    brand_dominance_ratio: Optional[float] = field(default=None, init=False)
+    area_ratio: float | None = field(default=None, init=False)
+    clear_space_ratio: float | None = field(default=None, init=False)
+    brand_dominance_ratio: float | None = field(default=None, init=False)
 
     def __post_init__(self):
         """Compute derived metrics from entities — single source of truth."""
@@ -108,25 +109,27 @@ def _edge_distance(a: list[int], b: list[int]) -> int:
 @dataclass
 class TrackBOutput:
     """Semantic pipeline output — judgments with mandatory confidence scores."""
+
     rule_id: str
     entities: list[DetectedEntity]
     semantic_pass: bool  # True = compliant, False = violation detected
     confidence_score: float
     reasoning_trace: str = ""
     rubric_penalties: list[str] = field(default_factory=list)
-    result: Optional[Result] = None
+    result: Result | None = None
 
 
 @dataclass
 class AssessmentOutput:
     """Final committed output with full audit trail."""
+
     review_id: str
     rule_id: str
     asset_id: str
     timestamp: str
     final_result: Result
-    track_a: Optional[dict] = None
-    track_b: Optional[dict] = None
+    track_a: dict | None = None
+    track_b: dict | None = None
     escalation_reasons: list[str] = field(default_factory=list)
     arbitration_log: str = ""
 
@@ -134,6 +137,7 @@ class AssessmentOutput:
 @dataclass
 class ComplianceReport:
     """Aggregated result across all rules evaluated for a single asset."""
+
     asset_id: str
     timestamp: str
     rule_results: list[AssessmentOutput]
@@ -177,18 +181,20 @@ class ComplianceReport:
 @dataclass
 class CollisionReport:
     """Cross-brand rule collision detected via static threshold analysis."""
+
     collision_id: str
     rules_involved: list[str]
     brands_involved: list[str]
     reason: str
     mathematical_proof: str
-    result: Result                  # Always ESCALATED
-    escalation_reason: str          # EscalationReason.CROSS_BRAND_CONFLICT.value
+    result: Result  # Always ESCALATED
+    escalation_reason: str  # EscalationReason.CROSS_BRAND_CONFLICT.value
 
 
 # ============================================================================
 # Rule Catalog — loaded from rules.yaml (the single source of truth)
 # ============================================================================
+
 
 def _load_yaml(path: Path | None = None) -> dict:
     """Load and return the full YAML catalog (defaults + rules).
@@ -202,10 +208,7 @@ def _load_yaml(path: Path | None = None) -> dict:
     with open(path, encoding="utf-8") as f:
         raw = yaml.safe_load(f)
     if not isinstance(raw, dict) or "rules" not in raw:
-        raise ValueError(
-            f"Invalid rule catalog in {path}: "
-            f"expected a YAML file with a top-level 'rules' key"
-        )
+        raise ValueError(f"Invalid rule catalog in {path}: expected a YAML file with a top-level 'rules' key")
     return raw
 
 
@@ -220,9 +223,7 @@ RULE_CATALOG = _CATALOG_RAW["rules"]
 # Named constants (Constraint 3: no inline magic numbers)
 # Note: per-rule thresholds are read from rule_config at evaluation time,
 # not from globals. Only the system-wide confidence default lives here.
-CONFIDENCE_THRESHOLD_DEFAULT = _CATALOG_RAW.get("defaults", {}).get(
-    "confidence_threshold", 0.85
-)
+CONFIDENCE_THRESHOLD_DEFAULT = _CATALOG_RAW.get("defaults", {}).get("confidence_threshold", 0.85)
 
 
 # ============================================================================
@@ -261,28 +262,29 @@ def detect_collisions(
             continue
 
         # Skip if active_rules filter excludes either side
-        if active_rules is not None:
-            if not all(rid in active_rules for rid in group_rule_ids):
-                continue
+        if active_rules is not None and not all(rid in active_rules for rid in group_rule_ids):
+            continue
 
         # Check mathematical compatibility for each pair
         for i, rid_a in enumerate(group_rule_ids):
-            for rid_b in group_rule_ids[i + 1:]:
+            for rid_b in group_rule_ids[i + 1 :]:
                 proof = _prove_mutual_exclusion(rules[rid_a], rules[rid_b])
                 if proof:
                     brands = [
                         rules[rid_a].get("brand", "unknown"),
                         rules[rid_b].get("brand", "unknown"),
                     ]
-                    collisions.append(CollisionReport(
-                        collision_id=f"col-{_generate_review_id()}",
-                        rules_involved=[rid_a, rid_b],
-                        brands_involved=brands,
-                        reason=group["reason"],
-                        mathematical_proof=proof,
-                        result=Result.ESCALATED,
-                        escalation_reason=EscalationReason.CROSS_BRAND_CONFLICT.value,
-                    ))
+                    collisions.append(
+                        CollisionReport(
+                            collision_id=f"col-{_generate_review_id()}",
+                            rules_involved=[rid_a, rid_b],
+                            brands_involved=brands,
+                            reason=group["reason"],
+                            mathematical_proof=proof,
+                            result=Result.ESCALATED,
+                            escalation_reason=EscalationReason.CROSS_BRAND_CONFLICT.value,
+                        )
+                    )
 
     return collisions
 
@@ -333,15 +335,14 @@ def _prove_mutual_exclusion(rule_a: dict, rule_b: dict) -> str | None:
 # Gatekeeper (Constraint 2: Dead-Man's Switch)
 # ============================================================================
 
-def gatekeeper(track_b: TrackBOutput, rule_config: dict) -> Optional[AssessmentOutput]:
+
+def gatekeeper(track_b: TrackBOutput, rule_config: dict) -> AssessmentOutput | None:
     """
     Intercepts Track B output before it reaches the Arbitrator.
     Returns an ESCALATED assessment if confidence is below threshold.
     Returns None if the output clears the gate.
     """
-    threshold = rule_config["semantic_spec"].get(
-        "confidence_threshold", CONFIDENCE_THRESHOLD_DEFAULT
-    )
+    threshold = rule_config["semantic_spec"].get("confidence_threshold", CONFIDENCE_THRESHOLD_DEFAULT)
 
     if track_b.confidence_score < threshold:
         return AssessmentOutput(
@@ -364,9 +365,8 @@ def gatekeeper(track_b: TrackBOutput, rule_config: dict) -> Optional[AssessmentO
 # Entity Reconciliation (Constraint 7)
 # ============================================================================
 
-def reconcile_entities(
-    track_a: TrackAOutput, track_b: TrackBOutput
-) -> Optional[str]:
+
+def reconcile_entities(track_a: TrackAOutput, track_b: TrackBOutput) -> str | None:
     """
     Verifies both tracks detected the same entities.
     Returns None if reconciled, or an EscalationReason string if mismatched.
@@ -398,6 +398,7 @@ def reconcile_entities(
 # ============================================================================
 # Arbitrator (Block 5)
 # ============================================================================
+
 
 def arbitrate(
     track_a: TrackAOutput,
@@ -443,14 +444,10 @@ def arbitrate(
 
     if metric_value is not None and metric_value < threshold:
         track_a.result = Result.FAIL
-        track_a.evidence = (
-            f"{metric_name} {metric_value:.4f} < threshold {threshold}"
-        )
+        track_a.evidence = f"{metric_name} {metric_value:.4f} < threshold {threshold}"
     else:
         track_a.result = Result.PASS
-        track_a.evidence = (
-            f"{metric_name} {metric_value:.4f} >= threshold {threshold}"
-        )
+        track_a.evidence = f"{metric_name} {metric_value:.4f} >= threshold {threshold}"
 
     # --- Step 3: Deterministic short-circuit ---
     # If Track A says FAIL, math is authoritative — skip Gatekeeper and arbitration
@@ -521,6 +518,7 @@ def arbitrate(
 # Learning Loop (Block 6)
 # ============================================================================
 
+
 class LearningStore:
     """In-memory store for prototype. Production would persist to DB."""
 
@@ -531,9 +529,7 @@ class LearningStore:
     def record_assessment(self, assessment: AssessmentOutput):
         self.assessments[assessment.review_id] = assessment
 
-    def record_override(
-        self, review_id: str, human_result: Result, human_reason: str
-    ) -> dict:
+    def record_override(self, review_id: str, human_result: Result, human_reason: str) -> dict:
         if review_id not in self.assessments:
             raise ValueError(f"Unknown review_id: {review_id}")
 
@@ -550,9 +546,7 @@ class LearningStore:
         return override
 
     def override_rate(self, rule_id: str) -> dict:
-        rule_assessments = [
-            a for a in self.assessments.values() if a.rule_id == rule_id
-        ]
+        rule_assessments = [a for a in self.assessments.values() if a.rule_id == rule_id]
         rule_overrides = [o for o in self.overrides if o["rule_id"] == rule_id]
         total = len(rule_assessments)
         overridden = len(rule_overrides)
@@ -569,14 +563,15 @@ class LearningStore:
 # Helpers
 # ============================================================================
 
+
 def _generate_review_id() -> str:
-    date_str = datetime.now(timezone.utc).strftime("%Y%m%d")
+    date_str = datetime.now(UTC).strftime("%Y%m%d")
     short_uuid = uuid.uuid4().hex[:6]
     return f"rev-{date_str}-{short_uuid}"
 
 
 def _now() -> str:
-    return datetime.now(timezone.utc).isoformat()
+    return datetime.now(UTC).isoformat()
 
 
 def _serialize_track_a(t: TrackAOutput) -> dict:
@@ -597,13 +592,14 @@ def _serialize_track_b(t: TrackBOutput) -> dict:
 # Mock Data Factory
 # ============================================================================
 
+
 def mock_track_a_clear_fail() -> TrackAOutput:
     """MC logo at 69% of Visa area — should FAIL deterministic check."""
     return TrackAOutput(
         rule_id="MC-PAR-001",
         entities=[
-            DetectedEntity(label="mastercard", bbox=[400, 300, 540, 400]),  # 140×100 = 14000
-            DetectedEntity(label="visa", bbox=[100, 50, 270, 170]),         # 170×120 = 20400
+            DetectedEntity(label="mastercard", bbox=[400, 300, 540, 400]),  # 140x100 = 14000
+            DetectedEntity(label="visa", bbox=[100, 50, 270, 170]),  # 170x120 = 20400
         ],  # area_ratio = 14000/20400 ≈ 0.686 — computed by __post_init__
     )
 
@@ -631,8 +627,8 @@ def mock_track_a_borderline_pass() -> TrackAOutput:
     return TrackAOutput(
         rule_id="MC-PAR-001",
         entities=[
-            DetectedEntity(label="mastercard", bbox=[400, 280, 598, 380]),  # 198×100 = 19800
-            DetectedEntity(label="visa", bbox=[100, 50, 270, 170]),         # 170×120 = 20400
+            DetectedEntity(label="mastercard", bbox=[400, 280, 598, 380]),  # 198x100 = 19800
+            DetectedEntity(label="visa", bbox=[100, 50, 270, 170]),  # 170x120 = 20400
         ],  # area_ratio = 19800/20400 ≈ 0.971 — computed by __post_init__
     )
 
@@ -702,8 +698,8 @@ def mock_track_a_both_pass() -> TrackAOutput:
     return TrackAOutput(
         rule_id="MC-PAR-001",
         entities=[
-            DetectedEntity(label="mastercard", bbox=[100, 50, 270, 170]),  # 170×120 = 20400
-            DetectedEntity(label="visa", bbox=[350, 50, 520, 170]),        # 170×120 = 20400
+            DetectedEntity(label="mastercard", bbox=[100, 50, 270, 170]),  # 170x120 = 20400
+            DetectedEntity(label="visa", bbox=[350, 50, 520, 170]),  # 170x120 = 20400
         ],  # area_ratio = 20400/20400 = 1.0 — computed by __post_init__
     )
 
@@ -730,6 +726,7 @@ def mock_track_b_both_pass() -> TrackBOutput:
 # Test Harness
 # ============================================================================
 
+
 def run_test(
     name: str,
     track_a: TrackAOutput,
@@ -745,15 +742,15 @@ def run_test(
     passed = result.final_result == expected_result
     status = "✅ PASS" if passed else "❌ FAIL"
 
-    print(f"\n{'='*70}")
+    print(f"\n{'=' * 70}")
     print(f"TEST: {name}")
-    print(f"{'='*70}")
+    print(f"{'=' * 70}")
     print(f"  Expected: {expected_result.value}")
     print(f"  Got:      {result.final_result.value}  {status}")
     print(f"  Review ID: {result.review_id}")
 
     if result.escalation_reasons:
-        print(f"  Escalation reasons:")
+        print("  Escalation reasons:")
         for r in result.escalation_reasons:
             print(f"    → {r}")
 
@@ -772,62 +769,69 @@ def main():
     print("=" * 70)
 
     # ---- Scenario 1: Both tracks agree FAIL ----
-    results.append(run_test(
-        name="both_agree_fail",
-        track_a=mock_track_a_clear_fail(),
-        track_b=mock_track_b_clear_fail(),
-        expected_result=Result.FAIL,
-        store=store,
-    ))
+    results.append(
+        run_test(
+            name="both_agree_fail",
+            track_a=mock_track_a_clear_fail(),
+            track_b=mock_track_b_clear_fail(),
+            expected_result=Result.FAIL,
+            store=store,
+        )
+    )
 
     # ---- Scenario 2: Both tracks agree PASS ----
-    results.append(run_test(
-        name="both_agree_pass",
-        track_a=mock_track_a_both_pass(),
-        track_b=mock_track_b_both_pass(),
-        expected_result=Result.PASS,
-        store=store,
-    ))
+    results.append(
+        run_test(
+            name="both_agree_pass",
+            track_a=mock_track_a_both_pass(),
+            track_b=mock_track_b_both_pass(),
+            expected_result=Result.PASS,
+            store=store,
+        )
+    )
 
     # ---- Scenario 3: THE HARD CASE — Track A PASS, Track B FAIL ----
     # This is the architectural thesis: deterministic math alone would
     # produce a false-confidence PASS. The Arbitrator must ESCALATE.
-    results.append(run_test(
-        name="hard_case_tracks_disagree",
-        track_a=mock_track_a_borderline_pass(),
-        track_b=mock_track_b_semantic_fail_high_confidence(),
-        expected_result=Result.ESCALATED,
-        store=store,
-    ))
+    results.append(
+        run_test(
+            name="hard_case_tracks_disagree",
+            track_a=mock_track_a_borderline_pass(),
+            track_b=mock_track_b_semantic_fail_high_confidence(),
+            expected_result=Result.ESCALATED,
+            store=store,
+        )
+    )
 
     # ---- Scenario 4: Low confidence triggers Gatekeeper ----
-    results.append(run_test(
-        name="gatekeeper_low_confidence",
-        track_a=mock_track_a_borderline_pass(),
-        track_b=mock_track_b_low_confidence(),
-        expected_result=Result.ESCALATED,
-        store=store,
-    ))
+    results.append(
+        run_test(
+            name="gatekeeper_low_confidence",
+            track_a=mock_track_a_borderline_pass(),
+            track_b=mock_track_b_low_confidence(),
+            expected_result=Result.ESCALATED,
+            store=store,
+        )
+    )
 
     # ---- Scenario 5: Entity mismatch triggers reconciliation ----
-    results.append(run_test(
-        name="entity_mismatch",
-        track_a=mock_track_a_borderline_pass(),
-        track_b=mock_track_b_entity_mismatch(),
-        expected_result=Result.ESCALATED,
-        store=store,
-    ))
+    results.append(
+        run_test(
+            name="entity_mismatch",
+            track_a=mock_track_a_borderline_pass(),
+            track_b=mock_track_b_entity_mismatch(),
+            expected_result=Result.ESCALATED,
+            store=store,
+        )
+    )
 
     # ---- Learning Loop: Simulate human override on Scenario 3 ----
-    print(f"\n{'='*70}")
+    print(f"\n{'=' * 70}")
     print("LEARNING LOOP: Simulating human override on hard case")
-    print(f"{'='*70}")
+    print(f"{'=' * 70}")
 
     # Find the hard case review_id
-    hard_case_assessments = [
-        a for a in store.assessments.values()
-        if a.asset_id == "test-hard_case_tracks_disagree"
-    ]
+    hard_case_assessments = [a for a in store.assessments.values() if a.asset_id == "test-hard_case_tracks_disagree"]
     if hard_case_assessments:
         hard_case = hard_case_assessments[0]
         override = store.record_override(
@@ -842,16 +846,16 @@ def main():
 
     # Show override rate analytics
     rate = store.override_rate("MC-PAR-001")
-    print(f"\n  Override rate for MC-PAR-001:")
+    print("\n  Override rate for MC-PAR-001:")
     print(f"    Total assessments: {rate['total_assessments']}")
     print(f"    Total overrides:   {rate['total_overrides']}")
     print(f"    Override rate:     {rate['override_rate']:.0%}")
     print(f"    Needs recalibration (>20%): {rate['needs_recalibration']}")
 
     # ---- Summary ----
-    print(f"\n{'='*70}")
+    print(f"\n{'=' * 70}")
     print("SUMMARY")
-    print(f"{'='*70}")
+    print(f"{'=' * 70}")
     total = len(results)
     passed = sum(results)
     print(f"  {passed}/{total} tests passed")
@@ -864,11 +868,19 @@ def main():
         print("\n  Next: swap mocked Track A with real YOLO, then Track B with real LLM.")
     else:
         failed_names = [
-            name for name, result in zip(
-                ["both_agree_fail", "both_agree_pass", "hard_case_tracks_disagree",
-                 "gatekeeper_low_confidence", "entity_mismatch"],
-                results
-            ) if not result
+            name
+            for name, result in zip(
+                [
+                    "both_agree_fail",
+                    "both_agree_pass",
+                    "hard_case_tracks_disagree",
+                    "gatekeeper_low_confidence",
+                    "entity_mismatch",
+                ],
+                results,
+                strict=True,
+            )
+            if not result
         ]
         print(f"\n  ❌ FAILURES: {failed_names}")
         print("  Fix the arbitration logic before proceeding.")

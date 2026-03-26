@@ -15,10 +15,10 @@ Date: March 22, 2026
 """
 
 from phase1_crucible import (
-    TrackAOutput,
+    RULE_CATALOG,
     DetectedEntity,
     Result,
-    RULE_CATALOG,
+    TrackAOutput,
     _edge_distance,
 )
 
@@ -128,9 +128,7 @@ def _evaluate_clear_space(output: TrackAOutput, entities: list[DetectedEntity], 
             output.evidence = "MC entity has zero width — degenerate bounding box"
         return
 
-    mc_entity = max(
-        (e for e in entities if e.label.lower() == "mastercard"), key=lambda e: e.area
-    )
+    mc_entity = max((e for e in entities if e.label.lower() == "mastercard"), key=lambda e: e.area)
     mc_width = mc_entity.bbox[2] - mc_entity.bbox[0]
     nearest_comp = min(
         (e for e in entities if e.label.lower() != "mastercard"),

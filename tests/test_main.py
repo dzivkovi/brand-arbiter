@@ -10,7 +10,7 @@ from unittest.mock import patch
 
 import pytest
 
-from main import run_pipeline, _build_short_circuit_assessment
+from main import _build_short_circuit_assessment, run_pipeline
 from phase1_crucible import (
     ComplianceReport,
     DetectedEntity,
@@ -18,19 +18,16 @@ from phase1_crucible import (
     TrackAOutput,
 )
 
-
 # ============================================================================
 # Track A short-circuit skips Track B
 # ============================================================================
 
-class TestPipelineShortCircuit:
 
+class TestPipelineShortCircuit:
     def test_fail_scenario_skips_track_b(self):
         """clear_violation: Track A FAIL → track_b must be None."""
         report = run_pipeline("clear_violation", "fake.png", dry_run=True)
-        parity = next(
-            a for a in report.rule_results if a.rule_id == "MC-PAR-001"
-        )
+        parity = next(a for a in report.rule_results if a.rule_id == "MC-PAR-001")
         assert parity.final_result == Result.FAIL
         assert parity.track_b is None
         assert "short-circuit" in parity.arbitration_log.lower()
@@ -38,18 +35,14 @@ class TestPipelineShortCircuit:
     def test_pass_scenario_uses_track_b(self):
         """compliant: Track A PASS → track_b must be populated."""
         report = run_pipeline("compliant", "fake.png", dry_run=True)
-        parity = next(
-            a for a in report.rule_results if a.rule_id == "MC-PAR-001"
-        )
+        parity = next(a for a in report.rule_results if a.rule_id == "MC-PAR-001")
         assert parity.final_result == Result.PASS
         assert parity.track_b is not None
 
     def test_short_circuit_has_track_a_data(self):
         """Short-circuited assessments still serialize Track A evidence."""
         report = run_pipeline("clear_violation", "fake.png", dry_run=True)
-        parity = next(
-            a for a in report.rule_results if a.rule_id == "MC-PAR-001"
-        )
+        parity = next(a for a in report.rule_results if a.rule_id == "MC-PAR-001")
         assert parity.track_a is not None
         assert parity.track_a["area_ratio"] == pytest.approx(0.6863, abs=0.001)
 
@@ -58,8 +51,8 @@ class TestPipelineShortCircuit:
 # _build_short_circuit_assessment helper
 # ============================================================================
 
-class TestBuildShortCircuitAssessment:
 
+class TestBuildShortCircuitAssessment:
     def test_produces_fail_with_no_track_b(self):
         """Helper must return FAIL with track_b=None."""
         track_a = TrackAOutput(
@@ -102,43 +95,33 @@ class TestBuildShortCircuitAssessment:
 # ComplianceReport worst-case aggregation
 # ============================================================================
 
-class TestComplianceReportWorstCase:
 
+class TestComplianceReportWorstCase:
     def test_fail_overrides_escalated_and_pass(self):
-        assert ComplianceReport.worst_case(
-            [Result.PASS, Result.ESCALATED, Result.FAIL]
-        ) == Result.FAIL
+        assert ComplianceReport.worst_case([Result.PASS, Result.ESCALATED, Result.FAIL]) == Result.FAIL
 
     def test_escalated_overrides_pass(self):
-        assert ComplianceReport.worst_case(
-            [Result.PASS, Result.ESCALATED]
-        ) == Result.ESCALATED
+        assert ComplianceReport.worst_case([Result.PASS, Result.ESCALATED]) == Result.ESCALATED
 
     def test_all_pass(self):
-        assert ComplianceReport.worst_case(
-            [Result.PASS, Result.PASS]
-        ) == Result.PASS
+        assert ComplianceReport.worst_case([Result.PASS, Result.PASS]) == Result.PASS
 
     def test_single_fail(self):
-        assert ComplianceReport.worst_case(
-            [Result.FAIL]
-        ) == Result.FAIL
+        assert ComplianceReport.worst_case([Result.FAIL]) == Result.FAIL
 
 
 # ============================================================================
 # Track B failure → ESCALATED (the parsing firewall in the pipeline)
 # ============================================================================
 
-class TestPipelineTrackBFailure:
 
+class TestPipelineTrackBFailure:
     @patch("main.call_live_track_b", side_effect=ValueError("LLM returned garbage"))
     def test_track_b_parse_failure_escalates(self, mock_call):
         """When call_live_track_b raises ValueError, pipeline produces ESCALATED."""
         # compliant scenario: Track A passes both rules, so Track B IS called
         report = run_pipeline("compliant", "fake.png", dry_run=False)
-        parity = next(
-            a for a in report.rule_results if a.rule_id == "MC-PAR-001"
-        )
+        parity = next(a for a in report.rule_results if a.rule_id == "MC-PAR-001")
         assert parity.final_result == Result.ESCALATED
         assert parity.track_b is None
         assert any("LLM returned garbage" in r for r in parity.escalation_reasons)
@@ -147,9 +130,7 @@ class TestPipelineTrackBFailure:
     def test_track_b_failure_still_has_track_a(self, mock_call):
         """Escalated assessment must still contain Track A evidence."""
         report = run_pipeline("compliant", "fake.png", dry_run=False)
-        parity = next(
-            a for a in report.rule_results if a.rule_id == "MC-PAR-001"
-        )
+        parity = next(a for a in report.rule_results if a.rule_id == "MC-PAR-001")
         assert parity.track_a is not None
         assert "area_ratio" in parity.track_a
 
@@ -157,9 +138,7 @@ class TestPipelineTrackBFailure:
     def test_short_circuit_unaffected_by_track_b_mock(self, mock_call):
         """Track A FAIL still short-circuits — the mock never fires."""
         report = run_pipeline("clear_violation", "fake.png", dry_run=False)
-        parity = next(
-            a for a in report.rule_results if a.rule_id == "MC-PAR-001"
-        )
+        parity = next(a for a in report.rule_results if a.rule_id == "MC-PAR-001")
         assert parity.final_result == Result.FAIL
         assert parity.track_b is None
         assert "short-circuit" in parity.arbitration_log.lower()

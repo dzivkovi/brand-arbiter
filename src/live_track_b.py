@@ -22,26 +22,26 @@ Author: Daniel Zivkovic, Magma Inc.
 Date: March 22, 2026
 """
 
-import anthropic
+import argparse
 import base64
 import json
-import sys
 import os
-import argparse
+import sys
 from pathlib import Path
+
+import anthropic
 
 # Import the proven Phase 1 pipeline (types, arbitrator, gatekeeper, learning loop)
 from phase1_crucible import (
+    RULE_CATALOG,
+    AssessmentOutput,
+    DetectedEntity,
+    LearningStore,
+    Result,
     TrackAOutput,
     TrackBOutput,
-    DetectedEntity,
-    AssessmentOutput,
-    Result,
-    LearningStore,
-    RULE_CATALOG,
     arbitrate,
 )
-
 
 # ============================================================================
 # Prompt Engineering: The Structured Confidence Rubric (Constraint 6)
@@ -275,20 +275,15 @@ def parse_track_b_response(raw_text: str, rule_id: str) -> TrackBOutput:
     # Validate semantic_pass is strictly bool (not string, not int)
     if not isinstance(data["semantic_pass"], bool):
         raise ValueError(
-            f"'semantic_pass' must be bool, got {type(data['semantic_pass']).__name__}: "
-            f"{data['semantic_pass']!r}"
+            f"'semantic_pass' must be bool, got {type(data['semantic_pass']).__name__}: {data['semantic_pass']!r}"
         )
 
     # Validate confidence_score is numeric and in range
     score = data["confidence_score"]
     if not isinstance(score, (int, float)):
-        raise ValueError(
-            f"'confidence_score' must be numeric, got {type(score).__name__}"
-        )
+        raise ValueError(f"'confidence_score' must be numeric, got {type(score).__name__}")
     if not (_MIN_CONFIDENCE <= float(score) <= _MAX_CONFIDENCE):
-        raise ValueError(
-            f"'confidence_score' {score} out of range [{_MIN_CONFIDENCE}, {_MAX_CONFIDENCE}]"
-        )
+        raise ValueError(f"'confidence_score' {score} out of range [{_MIN_CONFIDENCE}, {_MAX_CONFIDENCE}]")
 
     # Validate entities
     raw_entities = data["entities"]
@@ -305,9 +300,7 @@ def parse_track_b_response(raw_text: str, rule_id: str) -> TrackBOutput:
             raise ValueError(f"Entity {i} missing required field 'bbox'")
         bbox = ent["bbox"]
         if not isinstance(bbox, list) or len(bbox) != 4:
-            raise ValueError(
-                f"Entity {i} 'bbox' must be a list of 4 numbers, got {bbox!r}"
-            )
+            raise ValueError(f"Entity {i} 'bbox' must be a list of 4 numbers, got {bbox!r}")
         if not all(isinstance(v, (int, float)) for v in bbox):
             raise ValueError(f"Entity {i} 'bbox' contains non-numeric values: {bbox!r}")
         entities.append(DetectedEntity(label=ent["label"].lower(), bbox=bbox))
@@ -325,6 +318,7 @@ def parse_track_b_response(raw_text: str, rule_id: str) -> TrackBOutput:
 # ============================================================================
 # Live Track B: Anthropic Claude Vision API
 # ============================================================================
+
 
 def call_live_track_b(
     image_path: str,
@@ -345,6 +339,7 @@ def call_live_track_b(
     # Get image dimensions for context
     try:
         from PIL import Image
+
         with Image.open(image_path) as img:
             width, height = img.size
             resolution_note = f"Image dimensions: {width}x{height}px"
@@ -393,49 +388,49 @@ MOCK_TRACK_A_SCENARIOS = {
     "clear_violation": TrackAOutput(
         rule_id="MC-PAR-001",
         entities=[
-            DetectedEntity(label="mastercard", bbox=[400, 300, 540, 400]),  # 140×100 = 14000
-            DetectedEntity(label="visa", bbox=[100, 50, 270, 170]),         # 170×120 = 20400
+            DetectedEntity(label="mastercard", bbox=[400, 300, 540, 400]),  # 140x100 = 14000
+            DetectedEntity(label="visa", bbox=[100, 50, 270, 170]),  # 170x120 = 20400
         ],
     ),
     # area_ratio = 19400/20000 = 0.97 → PASS (Track B disagrees → ESCALATED)
     "hard_case": TrackAOutput(
         rule_id="MC-PAR-001",
         entities=[
-            DetectedEntity(label="mastercard", bbox=[400, 280, 594, 380]),  # 194×100 = 19400
-            DetectedEntity(label="visa", bbox=[100, 50, 300, 150]),         # 200×100 = 20000
+            DetectedEntity(label="mastercard", bbox=[400, 280, 594, 380]),  # 194x100 = 19400
+            DetectedEntity(label="visa", bbox=[100, 50, 300, 150]),  # 200x100 = 20000
         ],
     ),
     # area_ratio = 20000/20000 = 1.0 → PASS
     "compliant": TrackAOutput(
         rule_id="MC-PAR-001",
         entities=[
-            DetectedEntity(label="mastercard", bbox=[100, 50, 300, 150]),   # 200×100 = 20000
-            DetectedEntity(label="visa", bbox=[350, 50, 550, 150]),         # 200×100 = 20000
+            DetectedEntity(label="mastercard", bbox=[100, 50, 300, 150]),  # 200x100 = 20000
+            DetectedEntity(label="visa", bbox=[350, 50, 550, 150]),  # 200x100 = 20000
         ],
     ),
     # 2 entities (YOLO misses Amex) — entity mismatch when Track B sees 3
     "three_logos": TrackAOutput(
         rule_id="MC-PAR-001",
         entities=[
-            DetectedEntity(label="mastercard", bbox=[100, 380, 194, 480]),  # 94×100 = 9400
-            DetectedEntity(label="visa", bbox=[250, 380, 350, 480]),        # 100×100 = 10000
+            DetectedEntity(label="mastercard", bbox=[100, 380, 194, 480]),  # 94x100 = 9400
+            DetectedEntity(label="visa", bbox=[250, 380, 350, 480]),  # 100x100 = 10000
         ],  # area_ratio = 9400/10000 = 0.94
     ),
     # 3 entities — all detected
     "three_logos_full": TrackAOutput(
         rule_id="MC-PAR-001",
         entities=[
-            DetectedEntity(label="mastercard", bbox=[100, 380, 194, 480]),  # 94×100 = 9400
-            DetectedEntity(label="visa", bbox=[250, 380, 350, 480]),        # 100×100 = 10000
-            DetectedEntity(label="amex", bbox=[400, 395, 480, 435]),        # 80×40  = 3200
+            DetectedEntity(label="mastercard", bbox=[100, 380, 194, 480]),  # 94x100 = 9400
+            DetectedEntity(label="visa", bbox=[250, 380, 350, 480]),  # 100x100 = 10000
+            DetectedEntity(label="amex", bbox=[400, 395, 480, 435]),  # 80x40  = 3200
         ],  # area_ratio = 9400/10000 = 0.94
     ),
     # area_ratio = 5200/10000 = 0.52 → FAIL
     "low_res": TrackAOutput(
         rule_id="MC-PAR-001",
         entities=[
-            DetectedEntity(label="mastercard", bbox=[50, 20, 102, 120]),    # 52×100 = 5200
-            DetectedEntity(label="visa", bbox=[200, 20, 300, 120]),         # 100×100 = 10000
+            DetectedEntity(label="mastercard", bbox=[50, 20, 102, 120]),  # 52x100 = 5200
+            DetectedEntity(label="visa", bbox=[200, 20, 300, 120]),  # 100x100 = 10000
         ],
     ),
     # --- MC-CLR-002: Clear Space scenarios ---
@@ -443,28 +438,28 @@ MOCK_TRACK_A_SCENARIOS = {
     "clear_space_violation": TrackAOutput(
         rule_id="MC-CLR-002",
         entities=[
-            DetectedEntity(label="mastercard", bbox=[100, 100, 200, 200]),  # 100×100
-            DetectedEntity(label="visa", bbox=[210, 100, 310, 200]),        # gap = 10px
+            DetectedEntity(label="mastercard", bbox=[100, 100, 200, 200]),  # 100x100
+            DetectedEntity(label="visa", bbox=[210, 100, 310, 200]),  # gap = 10px
         ],
     ),
     # gap=30px, mc_width=100 → clear_space_ratio=0.30 → PASS
     "clear_space_compliant": TrackAOutput(
         rule_id="MC-CLR-002",
         entities=[
-            DetectedEntity(label="mastercard", bbox=[100, 100, 200, 200]),  # 100×100
-            DetectedEntity(label="visa", bbox=[230, 100, 330, 200]),        # gap = 30px
+            DetectedEntity(label="mastercard", bbox=[100, 100, 200, 200]),  # 100x100
+            DetectedEntity(label="visa", bbox=[230, 100, 330, 200]),  # gap = 30px
         ],
     ),
     # --- Co-Brand scenario: Barclays + Mastercard ---
-    # Barclays 20% larger: MC 200×100=20000, BC 240×100=24000
+    # Barclays 20% larger: MC 200x100=20000, BC 240x100=24000
     # area_ratio (mc/bc) = 20000/24000 ≈ 0.833 → MC-PAR-001 FAIL
     # dominance_ratio (bc/mc) = 24000/20000 = 1.20 → BC-DOM-001 PASS
     # Collision: these two results prove the SOP collision
     "barclays_cobrand": TrackAOutput(
         rule_id="MC-PAR-001",
         entities=[
-            DetectedEntity(label="mastercard", bbox=[100, 50, 300, 150]),   # 200×100 = 20000
-            DetectedEntity(label="barclays", bbox=[350, 50, 590, 150]),     # 240×100 = 24000
+            DetectedEntity(label="mastercard", bbox=[100, 50, 300, 150]),  # 200x100 = 20000
+            DetectedEntity(label="barclays", bbox=[350, 50, 590, 150]),  # 240x100 = 24000
         ],
     ),
 }
@@ -498,6 +493,7 @@ SCENARIO_EXPECTED = {
 # Test Runner
 # ============================================================================
 
+
 def run_live_test(
     scenario: str,
     image_path: str | None = None,
@@ -521,26 +517,25 @@ def run_live_test(
         raise ValueError(f"No mock Track A for scenario: {scenario}")
 
     rule_config = RULE_CATALOG[track_a.rule_id]
-    expected = SCENARIO_EXPECTED.get(scenario, None)
+    expected = SCENARIO_EXPECTED.get(scenario)
 
-    print(f"\n{'='*70}")
+    print(f"\n{'=' * 70}")
     print(f"LIVE TEST: {scenario}")
-    print(f"{'='*70}")
+    print(f"{'=' * 70}")
     print(f"  Image: {image_path}")
-    print(f"  Track A (mocked): area_ratio={track_a.area_ratio}, "
-          f"entities={[e.label for e in track_a.entities]}")
+    print(f"  Track A (mocked): area_ratio={track_a.area_ratio}, entities={[e.label for e in track_a.entities]}")
     if expected:
         print(f"  Expected result: {expected.value}")
 
     # --- Call live LLM ---
-    print(f"\n  --- Calling Live Track B ---")
+    print("\n  --- Calling Live Track B ---")
     try:
         track_b = call_live_track_b(image_path, rule_id=track_a.rule_id)
     except Exception as e:
         print(f"\n  ❌ Track B API call failed: {e}")
         raise
 
-    print(f"\n  --- Track B Response ---")
+    print("\n  --- Track B Response ---")
     print(f"  Entities detected: {[e.label for e in track_b.entities]}")
     print(f"  Semantic pass: {track_b.semantic_pass}")
     print(f"  Confidence score: {track_b.confidence_score:.2f}")
@@ -548,7 +543,7 @@ def run_live_test(
     print(f"  Reasoning (first 200 chars): {track_b.reasoning_trace[:200]}...")
 
     # --- Feed through the proven Arbitrator pipeline ---
-    print(f"\n  --- Arbitration ---")
+    print("\n  --- Arbitration ---")
     result = arbitrate(track_a, track_b, rule_config, asset_id=f"live-{scenario}")
     store.record_assessment(result)
 
@@ -559,7 +554,7 @@ def run_live_test(
 
     print(f"  Final result: {result.final_result.value}{status}")
     if result.escalation_reasons:
-        print(f"  Escalation reasons:")
+        print("  Escalation reasons:")
         for r in result.escalation_reasons:
             print(f"    → {r}")
     print(f"  Arbitration log: {result.arbitration_log}")
@@ -569,9 +564,7 @@ def run_live_test(
 
 
 def main():
-    parser = argparse.ArgumentParser(
-        description="Phase 2: Live Track B — Brand Compliance Parity Test"
-    )
+    parser = argparse.ArgumentParser(description="Phase 2: Live Track B — Brand Compliance Parity Test")
     parser.add_argument(
         "--scenario",
         choices=list(SCENARIO_IMAGES.keys()) + ["all"],
@@ -631,9 +624,9 @@ def main():
             results.append((scenario, None))
 
     # Summary
-    print(f"\n{'='*70}")
+    print(f"\n{'=' * 70}")
     print("PHASE 2 SUMMARY")
-    print(f"{'='*70}")
+    print(f"{'=' * 70}")
 
     for scenario, result in results:
         expected = SCENARIO_EXPECTED.get(scenario)
@@ -649,18 +642,18 @@ def main():
     # Dump full JSON for the most interesting result
     interesting = [r for s, r in results if s == "hard_case" and r is not None]
     if interesting:
-        print(f"\n{'='*70}")
+        print(f"\n{'=' * 70}")
         print("FULL OUTPUT: hard_case (the architectural thesis test)")
-        print(f"{'='*70}")
+        print(f"{'=' * 70}")
         from dataclasses import asdict
+
         output = asdict(interesting[0])
         output["final_result"] = interesting[0].final_result.value
         print(json.dumps(output, indent=2, default=str))
 
     # Override rate
     rate = store.override_rate("MC-PAR-001")
-    print(f"\n  Learning Loop — MC-PAR-001 override rate: "
-          f"{rate['total_overrides']}/{rate['total_assessments']}")
+    print(f"\n  Learning Loop — MC-PAR-001 override rate: {rate['total_overrides']}/{rate['total_assessments']}")
 
 
 if __name__ == "__main__":

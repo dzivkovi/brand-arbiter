@@ -9,19 +9,18 @@ Run: cd src && python -m pytest test_arbitration.py -v
 import pytest
 
 from phase1_crucible import (
-    Result,
-    EscalationReason,
+    CONFIDENCE_THRESHOLD_DEFAULT,
+    RULE_CATALOG,
     DetectedEntity,
+    EscalationReason,
+    LearningStore,
+    Result,
     TrackAOutput,
     TrackBOutput,
-    AssessmentOutput,
-    LearningStore,
-    RULE_CATALOG,
-    CONFIDENCE_THRESHOLD_DEFAULT,
     arbitrate,
     gatekeeper,
-    reconcile_entities,
     load_rule_catalog,
+    reconcile_entities,
 )
 
 RULE_CONFIG = RULE_CATALOG["MC-PAR-001"]
@@ -32,12 +31,10 @@ CLR_RULE_CONFIG = RULE_CATALOG["MC-CLR-002"]
 # Fixtures: reusable track outputs
 # ============================================================================
 
+
 def make_entities(*labels):
     """Shortcut to build DetectedEntity lists with dummy bboxes."""
-    return [
-        DetectedEntity(label=label, bbox=[i * 100, 0, i * 100 + 80, 80])
-        for i, label in enumerate(labels)
-    ]
+    return [DetectedEntity(label=label, bbox=[i * 100, 0, i * 100 + 80, 80]) for i, label in enumerate(labels)]
 
 
 def make_track_a(area_ratio, labels=("mastercard", "visa")):
@@ -78,8 +75,8 @@ def make_track_b(parity_holds, confidence, labels=("mastercard", "visa")):
 # Step 1: Entity Reconciliation
 # ============================================================================
 
-class TestEntityReconciliation:
 
+class TestEntityReconciliation:
     def test_matching_entities_passes(self):
         a = make_track_a(1.0)
         b = make_track_b(True, 0.95)
@@ -123,8 +120,8 @@ class TestEntityReconciliation:
 # Step 2: Gatekeeper
 # ============================================================================
 
-class TestGatekeeper:
 
+class TestGatekeeper:
     def test_above_threshold_clears(self):
         b = make_track_b(True, 0.90)
         assert gatekeeper(b, RULE_CONFIG) is None
@@ -150,6 +147,7 @@ class TestGatekeeper:
 # ============================================================================
 # Step 3: Deterministic Short-Circuit (the Phase 2.1 fix)
 # ============================================================================
+
 
 class TestDeterministicShortCircuit:
     """
@@ -197,8 +195,8 @@ class TestDeterministicShortCircuit:
 # Step 4-5: Arbitration Logic (Track A PASS cases only)
 # ============================================================================
 
-class TestArbitrationLogic:
 
+class TestArbitrationLogic:
     def test_both_tracks_agree_pass(self):
         a = make_track_a(1.0)
         b = make_track_b(parity_holds=True, confidence=0.95)
@@ -226,6 +224,7 @@ class TestArbitrationLogic:
 # ============================================================================
 # Execution Order Invariants
 # ============================================================================
+
 
 class TestExecutionOrder:
     """Verify that steps fire in the correct order."""
@@ -258,8 +257,8 @@ class TestExecutionOrder:
 # AssessmentOutput structure
 # ============================================================================
 
-class TestAssessmentOutput:
 
+class TestAssessmentOutput:
     def test_review_id_format(self):
         a = make_track_a(1.0)
         b = make_track_b(True, 0.95)
@@ -293,8 +292,8 @@ class TestAssessmentOutput:
 # Learning Loop
 # ============================================================================
 
-class TestLearningStore:
 
+class TestLearningStore:
     def test_record_and_retrieve_assessment(self):
         store = LearningStore()
         a = make_track_a(1.0)
@@ -363,6 +362,7 @@ class TestLearningStore:
 # ============================================================================
 # Clear Space Rule (MC-CLR-002) — Arbitration Tests
 # ============================================================================
+
 
 def make_track_a_clearspace(clear_space_ratio, labels=("mastercard", "visa")):
     """Build TrackAOutput with bboxes producing the given clear_space_ratio.
@@ -441,8 +441,8 @@ class TestClearSpaceArbitration:
 # Rule Catalog Loader
 # ============================================================================
 
-class TestLoadRuleCatalog:
 
+class TestLoadRuleCatalog:
     def test_load_returns_expected_rules(self):
         """Default rules.yaml contains both MC-PAR-001 and MC-CLR-002."""
         catalog = load_rule_catalog()
@@ -538,7 +538,6 @@ def make_track_b_dominance(semantic_pass, confidence, labels=("mastercard", "bar
 
 
 class TestDominanceArbitration:
-
     def test_dominance_both_pass(self):
         """Both tracks agree Barclays dominates → PASS."""
         a = make_track_a_dominance(1.25)

@@ -1,4 +1,5 @@
 """Add src/ to the import path so tests can import phase1_crucible."""
+
 import sys
 from pathlib import Path
 

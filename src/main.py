@@ -25,28 +25,25 @@ from pathlib import Path
 
 import anthropic
 
+from live_track_a import evaluate_track_a
+from live_track_b import (
+    MOCK_TRACK_A_SCENARIOS,
+    SCENARIO_IMAGES,
+    call_live_track_b,
+)
 from phase1_crucible import (
+    RULE_CATALOG,
     AssessmentOutput,
-    CollisionReport,
     ComplianceReport,
     LearningStore,
     Result,
-    RULE_CATALOG,
-    _load_yaml,
-    arbitrate,
-    detect_collisions,
     _generate_review_id,
+    _load_yaml,
     _now,
     _serialize_track_a,
+    arbitrate,
+    detect_collisions,
 )
-from live_track_a import evaluate_track_a
-from live_track_b import (
-    call_live_track_b,
-    MOCK_TRACK_A_SCENARIOS,
-    SCENARIO_IMAGES,
-    SCENARIO_EXPECTED,
-)
-
 
 # Rules to evaluate for every image
 ACTIVE_RULES = ["MC-PAR-001", "MC-CLR-002"]
@@ -58,6 +55,7 @@ IMAGE_TO_SCENARIO = {Path(v).name: k for k, v in SCENARIO_IMAGES.items()}
 # ============================================================================
 # Mock Track B (for --dry-run without API key)
 # ============================================================================
+
 
 def mock_track_b_for_scenario(scenario: str, rule_id: str = "MC-PAR-001"):
     """Return a plausible mocked Track B output for dry-run mode."""
@@ -94,9 +92,7 @@ def mock_track_b_for_scenario(scenario: str, rule_id: str = "MC-PAR-001"):
     else:
         entity_map = parity_map
 
-    semantic_pass, confidence, reasoning = entity_map.get(
-        scenario, (False, 0.80, "Unknown scenario — default mock.")
-    )
+    semantic_pass, confidence, reasoning = entity_map.get(scenario, (False, 0.80, "Unknown scenario — default mock."))
 
     mock = MOCK_TRACK_A_SCENARIOS.get(scenario)
     entities = list(mock.entities) if mock else []
@@ -113,6 +109,7 @@ def mock_track_b_for_scenario(scenario: str, rule_id: str = "MC-PAR-001"):
 # Pipeline
 # ============================================================================
 
+
 def resolve_scenario(image_path: str | None, scenario: str | None) -> tuple[str, str]:
     """
     Resolve scenario name and image path from CLI args.
@@ -125,7 +122,7 @@ def resolve_scenario(image_path: str | None, scenario: str | None) -> tuple[str,
         if not scenario:
             print(f"  Warning: image '{filename}' doesn't match a known scenario.")
             print(f"  Known images: {list(IMAGE_TO_SCENARIO.keys())}")
-            print(f"  Using 'hard_case' as default scenario for Track A mock bboxes.")
+            print("  Using 'hard_case' as default scenario for Track A mock bboxes.")
             scenario = "hard_case"
         return scenario, image_path
 
@@ -142,7 +139,8 @@ def resolve_scenario(image_path: str | None, scenario: str | None) -> tuple[str,
 
 
 def _build_short_circuit_assessment(
-    track_a, asset_id: str,
+    track_a,
+    asset_id: str,
 ) -> AssessmentOutput:
     """Build a FAIL AssessmentOutput when Track A short-circuits.
 
@@ -157,15 +155,14 @@ def _build_short_circuit_assessment(
         final_result=Result.FAIL,
         track_a=_serialize_track_a(track_a),
         track_b=None,
-        arbitration_log=(
-            f"Track A: FAIL ({track_a.evidence}) | "
-            f"Deterministic short-circuit — Track B skipped"
-        ),
+        arbitration_log=(f"Track A: FAIL ({track_a.evidence}) | Deterministic short-circuit — Track B skipped"),
     )
 
 
 def _build_escalated_assessment(
-    track_a, asset_id: str, reason: str,
+    track_a,
+    asset_id: str,
+    reason: str,
 ) -> AssessmentOutput:
     """Build an ESCALATED AssessmentOutput when Track B fails to parse.
 
@@ -181,9 +178,7 @@ def _build_escalated_assessment(
         final_result=Result.ESCALATED,
         track_a=_serialize_track_a(track_a),
         track_b=None,
-        arbitration_log=(
-            f"Track B parse failure — escalated to human review"
-        ),
+        arbitration_log=("Track B parse failure — escalated to human review"),
         escalation_reasons=[f"Track B unusable: {reason}"],
     )
 
@@ -222,7 +217,9 @@ def run_pipeline(
         # --- Track A: Deterministic ---
         rule_config = RULE_CATALOG[rule_id]
         track_a = evaluate_track_a(
-            list(entities), rule_id=rule_id, rule_config=rule_config,
+            list(entities),
+            rule_id=rule_id,
+            rule_config=rule_config,
         )
 
         # --- Short-circuit: Track A FAIL skips Track B entirely ---
@@ -247,7 +244,10 @@ def run_pipeline(
 
         # --- Arbitrator ---
         assessment = arbitrate(
-            track_a, track_b, rule_config, asset_id=asset_id,
+            track_a,
+            track_b,
+            rule_config,
+            asset_id=asset_id,
         )
         store.record_assessment(assessment)
         rule_results.append(assessment)
@@ -271,6 +271,7 @@ def run_pipeline(
 # ============================================================================
 # CLI
 # ============================================================================
+
 
 def main():
     parser = argparse.ArgumentParser(
@@ -349,8 +350,10 @@ Examples:
     for scenario, image_path in scenarios:
         try:
             report = run_pipeline(
-                scenario, image_path,
-                dry_run=args.dry_run, store=store,
+                scenario,
+                image_path,
+                dry_run=args.dry_run,
+                store=store,
                 rule_ids=active_rules,
             )
             results.append((scenario, report))
@@ -359,9 +362,9 @@ Examples:
             results.append((scenario, None))
 
     # --- ComplianceReport Summary (primary output) ---
-    print(f"\n{'='*70}")
+    print(f"\n{'=' * 70}")
     print("COMPLIANCE REPORT")
-    print(f"{'='*70}")
+    print(f"{'=' * 70}")
     for scenario, report in results:
         if report is None:
             print(f"\n  {scenario}: ERROR")
@@ -371,10 +374,9 @@ Examples:
 
         # Collisions first (architectural blockers)
         if report.collisions:
-            print(f"\n    CROSS-BRAND COLLISIONS:")
+            print("\n    CROSS-BRAND COLLISIONS:")
             for col in report.collisions:
-                print(f"    !! {' vs '.join(col.rules_involved)}: "
-                      f"ESCALATED (CROSS_BRAND_CONFLICT)")
+                print(f"    !! {' vs '.join(col.rules_involved)}: ESCALATED (CROSS_BRAND_CONFLICT)")
                 print(f"       Brands: {', '.join(col.brands_involved)}")
                 print(f"       Proof: {col.mathematical_proof}")
                 print(f"       Reason: {col.reason}")
@@ -390,21 +392,17 @@ Examples:
 
             short_circuit = assessment.track_b is None
             prefix = "short-circuit" if short_circuit else "arbitrated"
-            print(f"    {assessment.rule_id}: "
-                  f"{assessment.final_result.value} "
-                  f"({prefix}: {evidence})")
+            print(f"    {assessment.rule_id}: {assessment.final_result.value} ({prefix}: {evidence})")
 
             if assessment.escalation_reasons:
                 for r in assessment.escalation_reasons:
                     print(f"      -> {r}")
 
     # Learning loop footer
-    print(f"\n{'='*70}")
+    print(f"\n{'=' * 70}")
     for rule_id in active_rules:
         rate = store.override_rate(rule_id)
-        print(f"  {rule_id}: "
-              f"{rate['total_assessments']} assessments, "
-              f"{rate['total_overrides']} overrides")
+        print(f"  {rule_id}: {rate['total_assessments']} assessments, {rate['total_overrides']} overrides")
 
 
 if __name__ == "__main__":

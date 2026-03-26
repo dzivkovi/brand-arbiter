@@ -19,6 +19,9 @@ select = [
 ]
 ignore = [
     "E501",   # line too long (handled by formatter)
+    "RUF005", # list concatenation — `list(x) + [y]` is more readable than `[*list(x), y]`
+    "RUF015", # `list(x)[0]` vs `next(iter(x))` — readability over micro-optimization
+    "SIM108", # if/else vs ternary — explicit blocks are clearer for multi-line logic
 ]
 
 [tool.ruff.lint.isort]

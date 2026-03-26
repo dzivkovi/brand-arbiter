@@ -7,16 +7,15 @@ Run: python -m pytest tests/ -v
 
 import pytest
 
-from live_track_a import evaluate_track_a, compute_area, compute_min_edge_distance
-from phase1_crucible import DetectedEntity, Result, RULE_CATALOG
-
+from live_track_a import compute_area, compute_min_edge_distance, evaluate_track_a
+from phase1_crucible import DetectedEntity, Result
 
 # ============================================================================
 # Area computation
 # ============================================================================
 
-class TestComputeArea:
 
+class TestComputeArea:
     def test_basic_rectangle(self):
         assert compute_area([0, 0, 100, 50]) == 5000
 
@@ -34,8 +33,8 @@ class TestComputeArea:
 # Threshold behavior
 # ============================================================================
 
-class TestEvaluateTrackA:
 
+class TestEvaluateTrackA:
     def test_equal_areas_pass(self):
         """Identical bounding boxes → ratio 1.0 → PASS."""
         entities = [
@@ -50,7 +49,7 @@ class TestEvaluateTrackA:
         """MC larger than competitor → ratio > 1.0 → PASS."""
         entities = [
             DetectedEntity(label="mastercard", bbox=[0, 0, 200, 200]),  # 40000
-            DetectedEntity(label="visa", bbox=[300, 0, 400, 100]),      # 10000
+            DetectedEntity(label="visa", bbox=[300, 0, 400, 100]),  # 10000
         ]
         result = evaluate_track_a(entities)
         assert result.result == Result.PASS
@@ -82,7 +81,7 @@ class TestEvaluateTrackA:
         """MC at ~69% of Visa area → well below threshold → FAIL."""
         entities = [
             DetectedEntity(label="mastercard", bbox=[400, 300, 540, 400]),  # 140*100 = 14000
-            DetectedEntity(label="visa", bbox=[100, 50, 270, 170]),         # 170*120 = 20400
+            DetectedEntity(label="visa", bbox=[100, 50, 270, 170]),  # 170*120 = 20400
         ]
         result = evaluate_track_a(entities)
         assert result.result == Result.FAIL
@@ -93,14 +92,14 @@ class TestEvaluateTrackA:
 # Multiple competitors
 # ============================================================================
 
-class TestMultipleCompetitors:
 
+class TestMultipleCompetitors:
     def test_uses_largest_competitor(self):
         """With multiple competitors, ratio is MC / largest competitor."""
         entities = [
-            DetectedEntity(label="mastercard", bbox=[0, 0, 100, 100]),   # 10000
-            DetectedEntity(label="visa", bbox=[200, 0, 300, 100]),        # 10000
-            DetectedEntity(label="amex", bbox=[400, 0, 600, 200]),        # 40000
+            DetectedEntity(label="mastercard", bbox=[0, 0, 100, 100]),  # 10000
+            DetectedEntity(label="visa", bbox=[200, 0, 300, 100]),  # 10000
+            DetectedEntity(label="amex", bbox=[400, 0, 600, 200]),  # 40000
         ]
         result = evaluate_track_a(entities)
         # MC (10000) / Amex (40000) = 0.25 → FAIL
@@ -112,8 +111,8 @@ class TestMultipleCompetitors:
 # Edge cases
 # ============================================================================
 
-class TestEdgeCases:
 
+class TestEdgeCases:
     def test_no_entities(self):
         result = evaluate_track_a([])
         assert result.result == Result.FAIL
@@ -162,7 +161,7 @@ class TestEdgeCases:
         """Evidence string must include actual pixel measurements."""
         entities = [
             DetectedEntity(label="mastercard", bbox=[0, 0, 100, 100]),  # 10000
-            DetectedEntity(label="visa", bbox=[200, 0, 300, 100]),      # 10000
+            DetectedEntity(label="visa", bbox=[200, 0, 300, 100]),  # 10000
         ]
         result = evaluate_track_a(entities)
         assert "10000" in result.evidence
@@ -172,8 +171,8 @@ class TestEdgeCases:
 # Edge distance computation
 # ============================================================================
 
-class TestComputeMinEdgeDistance:
 
+class TestComputeMinEdgeDistance:
     def test_non_overlapping_horizontal(self):
         """Boxes separated horizontally by 50px gap."""
         assert compute_min_edge_distance([0, 0, 100, 100], [150, 0, 250, 100]) == 50
@@ -200,8 +199,8 @@ class TestComputeMinEdgeDistance:
 # Clear Space evaluation (MC-CLR-002)
 # ============================================================================
 
-class TestEvaluateTrackAClearSpace:
 
+class TestEvaluateTrackAClearSpace:
     def test_sufficient_clearspace_pass(self):
         """Gap of 30px with MC width 100 → ratio 0.30 >= 0.25 → PASS."""
         entities = [
@@ -261,8 +260,8 @@ class TestEvaluateTrackAClearSpace:
         """With multiple competitors, uses the NEAREST (not furthest)."""
         entities = [
             DetectedEntity(label="mastercard", bbox=[0, 0, 100, 100]),
-            DetectedEntity(label="visa", bbox=[110, 0, 210, 100]),       # gap = 10
-            DetectedEntity(label="amex", bbox=[300, 0, 400, 100]),       # gap = 200
+            DetectedEntity(label="visa", bbox=[110, 0, 210, 100]),  # gap = 10
+            DetectedEntity(label="amex", bbox=[300, 0, 400, 100]),  # gap = 200
         ]
         result = evaluate_track_a(entities, rule_id="MC-CLR-002")
         assert result.result == Result.FAIL
@@ -284,20 +283,20 @@ class TestEvaluateTrackAClearSpace:
         ]
         result = evaluate_track_a(entities, rule_id="MC-CLR-002")
         assert "100" in result.evidence  # MC width
-        assert "30" in result.evidence   # gap
+        assert "30" in result.evidence  # gap
 
 
 # ============================================================================
 # Brand Dominance evaluation (BC-DOM-001)
 # ============================================================================
 
-class TestEvaluateTrackABrandDominance:
 
+class TestEvaluateTrackABrandDominance:
     def test_barclays_larger_pass(self):
         """Barclays 25% larger → ratio 1.25 >= 1.20 → PASS."""
         entities = [
-            DetectedEntity(label="mastercard", bbox=[0, 0, 100, 100]),   # area 10000
-            DetectedEntity(label="barclays", bbox=[200, 0, 325, 100]),   # area 12500
+            DetectedEntity(label="mastercard", bbox=[0, 0, 100, 100]),  # area 10000
+            DetectedEntity(label="barclays", bbox=[200, 0, 325, 100]),  # area 12500
         ]
         result = evaluate_track_a(entities, rule_id="BC-DOM-001")
         assert result.result == Result.PASS
@@ -306,8 +305,8 @@ class TestEvaluateTrackABrandDominance:
     def test_barclays_smaller_fail(self):
         """Barclays only 10% larger → ratio 1.10 < 1.20 → FAIL."""
         entities = [
-            DetectedEntity(label="mastercard", bbox=[0, 0, 100, 100]),   # area 10000
-            DetectedEntity(label="barclays", bbox=[200, 0, 310, 100]),   # area 11000
+            DetectedEntity(label="mastercard", bbox=[0, 0, 100, 100]),  # area 10000
+            DetectedEntity(label="barclays", bbox=[200, 0, 310, 100]),  # area 11000
         ]
         result = evaluate_track_a(entities, rule_id="BC-DOM-001")
         assert result.result == Result.FAIL
@@ -316,8 +315,8 @@ class TestEvaluateTrackABrandDominance:
     def test_at_threshold_pass(self):
         """Exactly at 1.20 threshold → PASS (>= comparison)."""
         entities = [
-            DetectedEntity(label="mastercard", bbox=[0, 0, 100, 100]),   # area 10000
-            DetectedEntity(label="barclays", bbox=[200, 0, 320, 100]),   # area 12000
+            DetectedEntity(label="mastercard", bbox=[0, 0, 100, 100]),  # area 10000
+            DetectedEntity(label="barclays", bbox=[200, 0, 320, 100]),  # area 12000
         ]
         result = evaluate_track_a(entities, rule_id="BC-DOM-001")
         assert result.result == Result.PASS
@@ -326,8 +325,8 @@ class TestEvaluateTrackABrandDominance:
     def test_just_below_threshold_fail(self):
         """Ratio 1.199 < 1.20 → FAIL."""
         entities = [
-            DetectedEntity(label="mastercard", bbox=[0, 0, 1000, 1]),    # area 1000
-            DetectedEntity(label="barclays", bbox=[2000, 0, 3199, 1]),   # area 1199
+            DetectedEntity(label="mastercard", bbox=[0, 0, 1000, 1]),  # area 1000
+            DetectedEntity(label="barclays", bbox=[2000, 0, 3199, 1]),  # area 1199
         ]
         result = evaluate_track_a(entities, rule_id="BC-DOM-001")
         assert result.result == Result.FAIL
@@ -356,8 +355,8 @@ class TestEvaluateTrackABrandDominance:
     def test_evidence_contains_measurements(self):
         """Evidence string must include area measurements."""
         entities = [
-            DetectedEntity(label="mastercard", bbox=[0, 0, 100, 100]),   # area 10000
-            DetectedEntity(label="barclays", bbox=[200, 0, 325, 100]),   # area 12500
+            DetectedEntity(label="mastercard", bbox=[0, 0, 100, 100]),  # area 10000
+            DetectedEntity(label="barclays", bbox=[200, 0, 325, 100]),  # area 12500
         ]
         result = evaluate_track_a(entities, rule_id="BC-DOM-001")
         assert "12500" in result.evidence  # barclays area

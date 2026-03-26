@@ -3,23 +3,20 @@
 import sys
 from pathlib import Path
 
-import pytest
-
 # Allow imports from src/
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 from main import run_pipeline
 from phase1_crucible import (
+    RULE_CATALOG,
     AssessmentOutput,
     CollisionReport,
     ComplianceReport,
     EscalationReason,
-    RULE_CATALOG,
     Result,
     _load_yaml,
     detect_collisions,
 )
-
 
 # ============================================================================
 # Step 1: YAML schema — BC-DOM-001 and collision_groups
@@ -115,9 +112,7 @@ class TestDetectCollisions:
         """Collision groups referencing nonexistent rules are skipped."""
         raw = {
             "rules": {"MC-PAR-001": RULE_CATALOG["MC-PAR-001"]},
-            "collision_groups": [
-                {"name": "Phantom", "rules": ["MC-PAR-001", "FAKE-001"], "reason": "test"}
-            ],
+            "collision_groups": [{"name": "Phantom", "rules": ["MC-PAR-001", "FAKE-001"], "reason": "test"}],
         }
         collisions = detect_collisions(raw)
         assert collisions == []
@@ -241,9 +236,7 @@ class TestComplianceReportCollisions:
             asset_id="test",
             timestamp="2026-03-23T00:00:00Z",
             rule_results=[mc_assessment, bc_assessment],
-            overall_result=ComplianceReport.worst_case(
-                [Result.FAIL, Result.PASS], collisions=[collision]
-            ),
+            overall_result=ComplianceReport.worst_case([Result.FAIL, Result.PASS], collisions=[collision]),
             collisions=[collision],
         )
         # Individual results preserved under the collision umbrella
@@ -263,7 +256,9 @@ class TestPipelineCollisionDetection:
     def test_no_collision_single_brand(self):
         """Default MC-only rules → no collisions."""
         report = run_pipeline(
-            "compliant", "fake.png", dry_run=True,
+            "compliant",
+            "fake.png",
+            dry_run=True,
             rule_ids=["MC-PAR-001", "MC-CLR-002"],
         )
         assert report.collisions == []
@@ -271,7 +266,9 @@ class TestPipelineCollisionDetection:
     def test_pipeline_has_brand_results(self):
         """run_pipeline populates brand_results grouping."""
         report = run_pipeline(
-            "compliant", "fake.png", dry_run=True,
+            "compliant",
+            "fake.png",
+            dry_run=True,
             rule_ids=["MC-PAR-001", "MC-CLR-002"],
         )
         assert "mastercard" in report.brand_results
@@ -280,7 +277,9 @@ class TestPipelineCollisionDetection:
     def test_cobrand_detects_collision(self):
         """barclays_cobrand with both brands → collision detected."""
         report = run_pipeline(
-            "barclays_cobrand", "fake.png", dry_run=True,
+            "barclays_cobrand",
+            "fake.png",
+            dry_run=True,
             rule_ids=["MC-PAR-001", "MC-CLR-002", "BC-DOM-001"],
         )
         assert len(report.collisions) == 1
@@ -290,7 +289,9 @@ class TestPipelineCollisionDetection:
     def test_cobrand_preserves_individual_results(self):
         """Collision doesn't mask per-rule verdicts."""
         report = run_pipeline(
-            "barclays_cobrand", "fake.png", dry_run=True,
+            "barclays_cobrand",
+            "fake.png",
+            dry_run=True,
             rule_ids=["MC-PAR-001", "BC-DOM-001"],
         )
         mc_par = next(a for a in report.rule_results if a.rule_id == "MC-PAR-001")
@@ -303,7 +304,9 @@ class TestPipelineCollisionDetection:
     def test_cobrand_brand_grouping(self):
         """Cobrand report groups by mastercard and barclays."""
         report = run_pipeline(
-            "barclays_cobrand", "fake.png", dry_run=True,
+            "barclays_cobrand",
+            "fake.png",
+            dry_run=True,
             rule_ids=["MC-PAR-001", "BC-DOM-001"],
         )
         assert "mastercard" in report.brand_results

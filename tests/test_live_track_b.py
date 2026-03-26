@@ -9,16 +9,16 @@ Run: python -m pytest tests/test_live_track_b.py -v
 """
 
 import json
+
 import pytest
-from pathlib import Path
 
 from live_track_b import encode_image_base64, parse_track_b_response
 from phase1_crucible import TrackBOutput
 
-
 # ============================================================================
 # Fixtures: valid LLM response templates
 # ============================================================================
+
 
 def _valid_response(**overrides) -> str:
     """Build a valid JSON response string, with optional field overrides."""
@@ -40,8 +40,8 @@ def _valid_response(**overrides) -> str:
 # TestEncodeImageBase64
 # ============================================================================
 
-class TestEncodeImageBase64:
 
+class TestEncodeImageBase64:
     def test_encode_png_returns_base64_and_media_type(self):
         """Valid PNG returns non-empty base64 data and image/png media type."""
         data, media_type = encode_image_base64("test_assets/parity_compliant.png")
@@ -66,8 +66,8 @@ class TestEncodeImageBase64:
 # TestParseTrackBResponse — happy path
 # ============================================================================
 
-class TestParseTrackBResponseValid:
 
+class TestParseTrackBResponseValid:
     def test_valid_json_returns_track_b_output(self):
         """Well-formed response parses into correct TrackBOutput."""
         result = parse_track_b_response(_valid_response(), "MC-PAR-001")
@@ -104,16 +104,16 @@ class TestParseTrackBResponseValid:
 
     def test_confidence_score_as_integer(self):
         """Integer confidence (e.g., 1) is accepted as valid float."""
-        result = parse_track_b_response(
-            _valid_response(confidence_score=1), "MC-PAR-001"
-        )
+        result = parse_track_b_response(_valid_response(confidence_score=1), "MC-PAR-001")
         assert result.confidence_score == 1.0
 
     def test_labels_lowercased(self):
         """Entity labels are lowercased during parsing."""
-        raw = _valid_response(entities=[
-            {"label": "MASTERCARD", "bbox": [0, 0, 100, 100]},
-        ])
+        raw = _valid_response(
+            entities=[
+                {"label": "MASTERCARD", "bbox": [0, 0, 100, 100]},
+            ]
+        )
         result = parse_track_b_response(raw, "MC-PAR-001")
         assert result.entities[0].label == "mastercard"
 
@@ -122,8 +122,8 @@ class TestParseTrackBResponseValid:
 # TestParseTrackBResponse — strict rejection (the firewall)
 # ============================================================================
 
-class TestParseTrackBResponseRejects:
 
+class TestParseTrackBResponseRejects:
     def test_missing_semantic_pass_raises(self):
         """Omitting semantic_pass raises ValueError."""
         data = json.loads(_valid_response())
@@ -148,37 +148,27 @@ class TestParseTrackBResponseRejects:
     def test_semantic_pass_string_raises(self):
         """String 'true' instead of bool true raises ValueError."""
         with pytest.raises(ValueError, match="must be bool"):
-            parse_track_b_response(
-                _valid_response(semantic_pass="true"), "MC-PAR-001"
-            )
+            parse_track_b_response(_valid_response(semantic_pass="true"), "MC-PAR-001")
 
     def test_semantic_pass_int_raises(self):
         """Integer 1 instead of bool true raises ValueError."""
         with pytest.raises(ValueError, match="must be bool"):
-            parse_track_b_response(
-                _valid_response(semantic_pass=1), "MC-PAR-001"
-            )
+            parse_track_b_response(_valid_response(semantic_pass=1), "MC-PAR-001")
 
     def test_confidence_below_minimum_raises(self):
         """Confidence 0.05 (below 0.10 minimum) raises ValueError."""
         with pytest.raises(ValueError, match="out of range"):
-            parse_track_b_response(
-                _valid_response(confidence_score=0.05), "MC-PAR-001"
-            )
+            parse_track_b_response(_valid_response(confidence_score=0.05), "MC-PAR-001")
 
     def test_confidence_above_maximum_raises(self):
         """Confidence 1.50 (above 1.00 maximum) raises ValueError."""
         with pytest.raises(ValueError, match="out of range"):
-            parse_track_b_response(
-                _valid_response(confidence_score=1.50), "MC-PAR-001"
-            )
+            parse_track_b_response(_valid_response(confidence_score=1.50), "MC-PAR-001")
 
     def test_confidence_string_raises(self):
         """String confidence raises ValueError."""
         with pytest.raises(ValueError, match="must be numeric"):
-            parse_track_b_response(
-                _valid_response(confidence_score="0.85"), "MC-PAR-001"
-            )
+            parse_track_b_response(_valid_response(confidence_score="0.85"), "MC-PAR-001")
 
     def test_entity_missing_bbox_raises(self):
         """Entity without bbox raises ValueError."""
@@ -200,9 +190,7 @@ class TestParseTrackBResponseRejects:
         """Bbox with 3 elements instead of 4 raises ValueError."""
         with pytest.raises(ValueError, match="4 numbers"):
             parse_track_b_response(
-                _valid_response(entities=[
-                    {"label": "visa", "bbox": [0, 0, 100]}
-                ]),
+                _valid_response(entities=[{"label": "visa", "bbox": [0, 0, 100]}]),
                 "MC-PAR-001",
             )
 
@@ -210,18 +198,14 @@ class TestParseTrackBResponseRejects:
         """Bbox with string values raises ValueError."""
         with pytest.raises(ValueError, match="non-numeric"):
             parse_track_b_response(
-                _valid_response(entities=[
-                    {"label": "visa", "bbox": [0, 0, "100", 100]}
-                ]),
+                _valid_response(entities=[{"label": "visa", "bbox": [0, 0, "100", 100]}]),
                 "MC-PAR-001",
             )
 
     def test_complete_garbage_raises(self):
         """Non-JSON text raises ValueError."""
         with pytest.raises(ValueError, match="valid JSON"):
-            parse_track_b_response(
-                "I cannot evaluate this image.", "MC-PAR-001"
-            )
+            parse_track_b_response("I cannot evaluate this image.", "MC-PAR-001")
 
     def test_json_array_instead_of_object_raises(self):
         """JSON array instead of object raises ValueError."""
@@ -231,6 +215,4 @@ class TestParseTrackBResponseRejects:
     def test_entities_not_list_raises(self):
         """entities as a string raises ValueError."""
         with pytest.raises(ValueError, match="must be a list"):
-            parse_track_b_response(
-                _valid_response(entities="not a list"), "MC-PAR-001"
-            )
+            parse_track_b_response(_valid_response(entities="not a list"), "MC-PAR-001")
