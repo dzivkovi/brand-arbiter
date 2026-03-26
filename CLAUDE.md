@@ -36,6 +36,21 @@ Both use API-level structured outputs (ADR-0007). Model selection is empirical â
 
 ## Commands
 
+### Linting & Formatting (ruff only)
+
+```bash
+ruff format .
+ruff check . --fix
+```
+
+Config in `pyproject.toml`. Run before declaring any task complete.
+
+### Install dev dependencies
+
+```bash
+pip install -r requirements-dev.txt
+```
+
 ### Run unit tests (no API key needed)
 
 ```bash
