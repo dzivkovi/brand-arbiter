@@ -27,7 +27,7 @@
 * **Atomic Auto-Commits:** You are authorized and encouraged to auto-commit to the local branch after *every* successful test pass or completed logical step.
 * **Semantic Prefixing:** Prefix all automated commits with `agent: ` or `wip: `.
 * **Revert on Failure:** Use `git reset --hard` to revert to your last green commit if you break the test suite, rather than blindly overwriting files to guess the fix.
-* **Sequential Execution:** Do not spawn parallel sub-agents. Write one file, test it, verify it, then move to the next.
+* **Execution Strategy:** Default to sequential for coupled changes (write one file, test it, verify it, then move to the next). Use parallel sub-agents only when tasks are truly independent and touch separate files - e.g., research, code review, or test generation across unrelated modules.
 
 ## 5. Architectural Authority
 * **The Blueprint:** All architectural constraints live in `specs/brand-compliance-confidence-sketch.md`.
