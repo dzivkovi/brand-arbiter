@@ -23,13 +23,13 @@ import os
 import sys
 from pathlib import Path
 
-import anthropic
-
 from live_track_a import evaluate_track_a
 from live_track_b import (
     MOCK_TRACK_A_SCENARIOS,
     SCENARIO_IMAGES,
+    _build_prompt,
     call_live_track_b,
+    parse_track_b_response,
 )
 from phase1_crucible import (
     RULE_CATALOG,
@@ -44,6 +44,7 @@ from phase1_crucible import (
     arbitrate,
     detect_collisions,
 )
+from vlm_provider import VLMError
 
 # Rules to evaluate for every image
 ACTIVE_RULES = ["MC-PAR-001", "MC-CLR-002"]
@@ -189,6 +190,8 @@ def run_pipeline(
     dry_run: bool = False,
     store: LearningStore | None = None,
     rule_ids: list[str] | None = None,
+    model_version: str = "",
+    provider=None,
 ) -> ComplianceReport:
     """
     Execute the full dual-track pipeline for one scenario across all rules.
@@ -233,9 +236,15 @@ def run_pipeline(
         try:
             if dry_run:
                 track_b = mock_track_b_for_scenario(scenario, rule_id=rule_id)
+            elif provider is not None:
+                # Provider-routed path (TODO-011): any VLM backend
+                prompt = _build_prompt(image_path, rule_id)
+                raw_text = provider.analyze(image_path, prompt)
+                track_b = parse_track_b_response(raw_text, rule_id)
             else:
+                # Backward-compat path: default Claude via call_live_track_b
                 track_b = call_live_track_b(image_path, rule_id=rule_id)
-        except (ValueError, anthropic.APIError) as e:
+        except (ValueError, VLMError) as e:
             # LLM returned junk or API failed — escalate, don't guess
             assessment = _build_escalated_assessment(track_a, asset_id, str(e))
             store.record_assessment(assessment)
@@ -265,6 +274,7 @@ def run_pipeline(
         overall_result=overall,
         brand_results=brand_results,
         collisions=collisions,
+        model_version=model_version,
     )
 
 
@@ -306,21 +316,39 @@ Examples:
         action="store_true",
         help="Include Barclays co-brand rules (BC-DOM-001) in evaluation",
     )
+    parser.add_argument(
+        "--provider",
+        choices=["claude", "gemini"],
+        default="claude",
+        help="VLM provider to use (default: claude)",
+    )
     args = parser.parse_args()
 
     # Default to --scenario hard_case if nothing specified
     if not args.image and not args.scenario:
         args.scenario = "hard_case"
 
+    # Resolve provider and model_version
+    from vlm_provider import get_provider as _get_provider
+
+    provider = _get_provider(args.provider)
+    model_version = "dry-run (mock)" if args.dry_run else provider.model_version
+
     # Verify API key unless dry-run
     if not args.dry_run:
-        api_key = os.environ.get("ANTHROPIC_API_KEY", "")
+        if args.provider == "gemini":
+            # google-genai SDK auto-detects GOOGLE_API_KEY (precedence) or GEMINI_API_KEY
+            api_key = os.environ.get("GOOGLE_API_KEY", "") or os.environ.get("GEMINI_API_KEY", "")
+            env_hint = "GOOGLE_API_KEY or GEMINI_API_KEY"
+        else:
+            api_key = os.environ.get("ANTHROPIC_API_KEY", "")
+            env_hint = "ANTHROPIC_API_KEY"
         if not api_key:
             print("=" * 70)
-            print("ERROR: ANTHROPIC_API_KEY not set. Use --dry-run for mock mode.")
+            print(f"ERROR: {env_hint} not set. Use --dry-run for mock mode.")
             print()
-            print("  export ANTHROPIC_API_KEY='sk-ant-...'")
-            print(f"  python src/main.py --scenario {args.scenario or 'hard_case'}")
+            print(f"  export {env_hint.split(' or ')[0]}='your-key-here'")
+            print(f"  python src/main.py --scenario {args.scenario or 'hard_case'} --provider {args.provider}")
             print()
             print("Or run without an API key:")
             print(f"  python src/main.py --scenario {args.scenario or 'hard_case'} --dry-run")
@@ -329,7 +357,8 @@ Examples:
 
     print("=" * 70)
     print("BRAND ARBITER — Dual-Track Brand Compliance Engine")
-    print(f"Mode: {'DRY RUN (mock Track B)' if args.dry_run else 'LIVE (Claude Vision API)'}")
+    print(f"Provider: {args.provider} ({model_version})")
+    print(f"Mode: {'DRY RUN (mock Track B)' if args.dry_run else 'LIVE'}")
     print("=" * 70)
 
     store = LearningStore()
@@ -355,6 +384,8 @@ Examples:
                 dry_run=args.dry_run,
                 store=store,
                 rule_ids=active_rules,
+                model_version=model_version,
+                provider=provider,
             )
             results.append((scenario, report))
         except Exception as e:

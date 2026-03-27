@@ -29,8 +29,6 @@ import os
 import sys
 from pathlib import Path
 
-import anthropic
-
 # Import the proven Phase 1 pipeline (types, arbitrator, gatekeeper, learning loop)
 from phase1_crucible import (
     RULE_CATALOG,
@@ -320,6 +318,19 @@ def parse_track_b_response(raw_text: str, rule_id: str) -> TrackBOutput:
 # ============================================================================
 
 
+def _build_prompt(image_path: str, rule_id: str) -> str:
+    """Build the full evaluation prompt with image dimensions context."""
+    try:
+        from PIL import Image
+
+        with Image.open(image_path) as img:
+            width, height = img.size
+            resolution_note = f"Image dimensions: {width}x{height}px"
+    except ImportError:
+        resolution_note = "Image dimensions: unknown (Pillow not installed)"
+    return f"{resolution_note}\n\n{RULE_PROMPTS[rule_id]}"
+
+
 def call_live_track_b(
     image_path: str,
     rule_id: str = "MC-PAR-001",
@@ -329,53 +340,18 @@ def call_live_track_b(
     Sends an image to Claude's vision API with the structured evaluation prompt.
     Parses the response through strict schema validation into a TrackBOutput.
 
+    Delegates to ClaudeProvider for the API call (TODO-011 refactor).
     Raises ValueError if the LLM response fails schema validation.
+    Raises VLMError if the API call itself fails.
     """
-    client = anthropic.Anthropic()  # reads ANTHROPIC_API_KEY from env
+    from vlm_provider import ClaudeProvider
 
-    # Read and encode the image
-    image_data, media_type = encode_image_base64(image_path)
-
-    # Get image dimensions for context
-    try:
-        from PIL import Image
-
-        with Image.open(image_path) as img:
-            width, height = img.size
-            resolution_note = f"Image dimensions: {width}x{height}px"
-    except ImportError:
-        resolution_note = "Image dimensions: unknown (Pillow not installed)"
+    provider = ClaudeProvider(model=model)
+    prompt = _build_prompt(image_path, rule_id)
 
     print(f"  Calling Claude ({model}) with image: {Path(image_path).name}")
-    print(f"  {resolution_note}")
 
-    # Make the API call
-    response = client.messages.create(
-        model=model,
-        max_tokens=2000,
-        messages=[
-            {
-                "role": "user",
-                "content": [
-                    {
-                        "type": "image",
-                        "source": {
-                            "type": "base64",
-                            "media_type": media_type,
-                            "data": image_data,
-                        },
-                    },
-                    {
-                        "type": "text",
-                        "text": f"{resolution_note}\n\n{RULE_PROMPTS[rule_id]}",
-                    },
-                ],
-            }
-        ],
-    )
-
-    # Extract and parse through strict validator
-    raw_text = response.content[0].text.strip()
+    raw_text = provider.analyze(image_path, prompt)
     return parse_track_b_response(raw_text, rule_id)
 
 
