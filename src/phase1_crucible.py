@@ -144,6 +144,7 @@ class ComplianceReport:
     overall_result: Result  # worst-case: FAIL > ESCALATED > PASS
     brand_results: dict[str, list[AssessmentOutput]] = field(default_factory=dict)
     collisions: list = field(default_factory=list)  # list[CollisionReport]
+    model_version: str = ""  # VLM provider model identifier (TODO-011, auditability)
 
     @staticmethod
     def worst_case(

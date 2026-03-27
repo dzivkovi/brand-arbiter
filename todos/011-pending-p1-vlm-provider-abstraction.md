@@ -83,7 +83,7 @@ New tests in `tests/test_vlm_provider.py`:
 | `src/main.py` (CLI flag + `VLMError` catch) | `rules.yaml` |
 | `src/phase1_crucible.py` (**metadata only**: add `model_version: str = ""` to `ComplianceReport`) | |
 | `tests/test_vlm_provider.py` (new) | |
-| `requirements.txt` (add `google-generativeai`) | |
+| `requirements.txt` (add `google-genai`) | |
 | `pyproject.toml` (isort config) | |
 
 ### Gate 4 — Human (1 question, under 2 min)
