@@ -84,7 +84,7 @@ Step 3: Arbitrator → {reconcile semantic + deterministic → PASS/FAIL/ESCALAT
 
 ## Related Debt
 
-- `todos/005-pending-p1-live-track-a-yolo-opencv.md` — rewritten to VLM-first perception with DINO fallback
+- `todos/005-pending-p1-live-track-a-vlm-first-perception.md` — rewritten to VLM-first perception with DINO fallback
 - `todos/013-pending-p1-benchmark-vlm-models.md` — benchmark VLM bbox precision (IoU ≥ 0.85 target)
 - `todos/017-pending-p2-grounding-dino-fallback.md` — implement DINO fallback module
 

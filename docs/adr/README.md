@@ -37,6 +37,7 @@ Examples:
 | [ADR-0001](ADR-0001-deterministic-short-circuit-before-gatekeeper.md) | Deterministic short-circuit before Gatekeeper | accepted | 2026-03-22 |
 | [ADR-0002](ADR-0002-explicit-boolean-polarity-in-llm-prompts.md) | Explicit Boolean polarity in LLM prompts | accepted | 2026-03-22 |
 | [ADR-0003](ADR-0003-static-yaml-collision-detection.md) | Static YAML collision detection over runtime discovery | accepted | 2026-03-23 |
+| [ADR-0004](ADR-0004-dual-engine-pattern-alignment.md) | Recognize Brand Arbiter as an instance of the universal dual-engine pattern | accepted | 2026-03-23 |
 | [ADR-0005](ADR-0005-vlm-first-perception.md) | VLM-first perception over dedicated object detection | accepted | 2026-03-25 |
 | [ADR-0006](ADR-0006-vlm-text-extraction.md) | VLM-first text extraction, no dedicated OCR pipeline | accepted | 2026-03-25 |
 | [ADR-0007](ADR-0007-structured-outputs.md) | API-level structured outputs for VLM responses | accepted | 2026-03-25 |
