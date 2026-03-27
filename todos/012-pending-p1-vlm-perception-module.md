@@ -19,7 +19,7 @@ The VLM-first architecture (ADR-0005) requires a single VLM call per image that 
 - [ ] Unified domain output schema defined in `vlm_perception.py` (field names, types, structure — source of truth for TODO-014 enforcement)
 - [ ] `bbox_confidence` field ("high"/"medium"/"low") per entity
 - [ ] Extends existing `live_track_b.py` patterns (don't rewrite from scratch)
-- [ ] Wire into `main.py` pipeline (VLM before Track A)
+- [ ] Importable from `main.py`; full pipeline flow change (VLM before Track A) deferred to TODO-005
 - [ ] Backward-compatible: `parse_track_b_response()` still works for old-format responses
 - [ ] Mock/dry-run mode preserved (no API keys required for testing)
 
@@ -28,6 +28,7 @@ The VLM-first architecture (ADR-0005) requires a single VLM call per image that 
 - Depends on TODO-011 (provider abstraction)
 - Enables TODO-003 (lettercase via `extracted_text`), TODO-005 (live Track A), TODO-013 (benchmarking)
 - Current `live_track_b.py` already returns bounding boxes — this extends, not replaces, that capability
+- **012/005 boundary:** This TODO creates and tests the perception module in isolation. TODO-005 owns the pipeline rewire in `main.py` (VLM before Track A). Clear ownership prevents merge conflicts.
 
 ## Scope Boundaries
 
@@ -73,10 +74,10 @@ New tests in `tests/test_vlm_perception.py`:
 
 | Allowed (may create/modify) | Forbidden (must not touch) |
 |-----------------------------|---------------------------|
-| `src/vlm_perception.py` (new) | `src/live_track_a.py` |
-| `src/live_track_b.py` (extend patterns) | `src/phase1_crucible.py` |
-| `src/main.py` (wire VLM before Track A) | `rules.yaml` |
-| `tests/test_vlm_perception.py` (new) | |
+| `src/vlm_perception.py` (new) | `src/main.py` (pipeline flow change is TODO-005) |
+| `src/live_track_b.py` (extend patterns) | `src/live_track_a.py` |
+| `tests/test_vlm_perception.py` (new) | `src/phase1_crucible.py` |
+| | `rules.yaml` |
 
 ### Gate 4 — Human (1 question, under 2 min)
 

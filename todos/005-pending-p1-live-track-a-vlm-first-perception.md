@@ -16,11 +16,11 @@ Track A currently uses hardcoded bounding boxes from `MOCK_TRACK_A_SCENARIOS`. F
 
 - [ ] VLM perception module from TODO-012 feeds bounding boxes into existing `evaluate_track_a()` pipeline
 - [ ] VLM bounding boxes fed into existing `evaluate_track_a()` pipeline (no Track A code changes — already bbox-agnostic)
-- [ ] Pipeline in `main.py` rewired: VLM call before Track A evaluation
-- [ ] `bbox_confidence` field ("high"/"medium"/"low") included in VLM output
+- [ ] Pipeline in `main.py` rewired: VLM perception before Track A evaluation (**this TODO owns the pipeline flow change** — 012 creates the module, 005 integrates it)
+- [ ] `bbox_confidence` field ("high"/"medium"/"low") included in VLM output (consumed from 012's schema)
 - [ ] Mock scenarios still available for `--dry-run` mode
 - [ ] ADR-0001 (deterministic short-circuit) still works: Track A FAIL short-circuits regardless of bbox source
-- [ ] At least one real image end-to-end test
+- [ ] At least one end-to-end test with real VLM call (not dry-run) — can use existing `test_assets/` images
 - [ ] All existing 145+ tests still pass (130+ need zero changes; ~15 integration tests need mock updates)
 
 ## Notes
@@ -30,6 +30,7 @@ Track A currently uses hardcoded bounding boxes from `MOCK_TRACK_A_SCENARIOS`. F
 - `evaluate_track_a()` in `live_track_a.py` requires NO changes (proven bbox-agnostic)
 - Grounding DINO fallback is a separate TODO-017 (P2) — this TODO covers the VLM-primary path
 - Depends on TODO-011 (provider abstraction) and TODO-012 (perception module)
+- **005/012 boundary:** TODO-012 creates and tests `vlm_perception.py` in isolation. This TODO wires it into `main.py`'s pipeline flow (VLM → Track A → Arbitrator). Clear ownership prevents merge conflicts.
 
 ## Scope Boundaries
 
@@ -75,9 +76,9 @@ New/updated tests:
 
 | Allowed (may create/modify) | Forbidden (must not touch) |
 |-----------------------------|---------------------------|
-| `src/main.py` (pipeline rewire) | `src/live_track_a.py` (already bbox-agnostic) |
+| `src/main.py` (pipeline rewire — **owns flow change**) | `src/live_track_a.py` (already bbox-agnostic) |
 | `tests/test_main.py` (mock updates) | `src/phase1_crucible.py` |
-| | `src/vlm_perception.py` (created by 012) |
+| `test_assets/` (add smoke test image if needed) | `src/vlm_perception.py` (created by 012) |
 | | `src/vlm_provider.py` (created by 011) |
 
 ### Gate 4 — Human (1 question, under 2 min)

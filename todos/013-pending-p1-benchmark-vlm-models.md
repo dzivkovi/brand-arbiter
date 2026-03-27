@@ -15,7 +15,7 @@ Model selection must be empirical, not assumed. Research shows newer/larger mode
 ## Acceptance Criteria
 
 - [ ] Golden dataset of 10+ real marketing images with manually annotated ground-truth bounding boxes
-- [ ] Benchmark Gemini Flash, Gemini 3.1 Pro, and Claude Sonnet on each image
+- [ ] Benchmark Gemini Flash, Gemini Pro, and Claude Sonnet on each image (use latest available model versions at implementation time)
 - [ ] Measure bounding box IoU (Intersection over Union) against ground truth
 - [ ] Measure semantic judgment accuracy per rule type
 - [ ] Pass criteria: IoU ≥ 0.85 on 90%+ of entities AND no verdict flips due to bbox imprecision
@@ -28,6 +28,7 @@ Model selection must be empirical, not assumed. Research shows newer/larger mode
 - If VLM bbox precision fails: Grounding DINO becomes primary for localization (TODO-017)
 - Depends on TODO-011 (provider abstraction), TODO-012 (perception module for standardized prompts), and TODO-006 (real test assets)
 - Use only publicly available brand guideline images (clean hands policy)
+- **Depends on `ComplianceReport.model_version`** (added by TODO-011) to tag benchmark results per model. If model_version is missing, benchmark comparison tables can't be generated programmatically.
 
 ## Scope Boundaries
 
@@ -57,7 +58,7 @@ All must pass unchanged.
 ### Gate 2 — Contract (machine)
 
 - Golden dataset: 10+ images with manually annotated ground-truth bboxes
-- Benchmark runs across Gemini Flash, Gemini Pro, Claude Sonnet
+- Benchmark runs across Gemini Flash, Gemini Pro, Claude Sonnet (latest versions at implementation time)
 - IoU computed per entity per model
 - Pass criterion: IoU >= 0.85 on 90%+ entities AND no verdict flips
 - Comparison table with per-model results

@@ -20,12 +20,14 @@ Brand Arbiter needs to support multiple VLM providers (Gemini, Claude, and poten
 - [ ] Both providers return valid JSON matching TrackBOutput schema (parsed with existing `parse_track_b_response()`)
 - [ ] Provider selection via CLI flag or config: `--provider gemini|claude`
 - [ ] Model version recorded in compliance report output (auditability)
+- [ ] Both providers raise `VLMError` (defined in `vlm_provider.py`) on API/network failures — pipeline catches this, not SDK-specific exceptions
 - [ ] Tests for both providers (mock mode — no API keys required)
 
 ## Notes
 
 - This is the foundation that unblocks TODO-012, TODO-013, TODO-014, and TODO-005
-- Provider interface should be minimal: `analyze(image, prompt, schema) → dict`
+- Provider interface: `analyze(image_path: str | Path, prompt: str, schema: dict | None = None) → str`. Returns raw VLM text; parsing stays in `parse_track_b_response()`. The `schema` param is a forward-compatible hook for TODO-014 (structured outputs) — implementations ignore it until then.
+- Both providers must raise `VLMError` (defined in `vlm_provider.py`) on API/network failures. Pipeline catches `VLMError`, not SDK-specific exceptions (`anthropic.APIError`, `google.api_core.exceptions.*`). This keeps the abstraction clean when adding providers.
 - Both Gemini and Claude support structured outputs — the abstraction is clean
 - Gemini Flash is a strong candidate based on cost-effectiveness. Claude remains the default provider. Default may change after empirical benchmarking (TODO-013).
 
@@ -64,8 +66,9 @@ New tests in `tests/test_vlm_provider.py`:
 - GeminiProvider instantiates with mock API key, returns valid TrackBOutput JSON
 - Provider factory resolves `"claude"` and `"gemini"` correctly
 - Unknown provider name raises ValueError with helpful message
+- Both providers raise `VLMError` on API failure (not SDK-specific exceptions)
 - `--provider gemini` CLI flag accepted and routed correctly
-- ComplianceReport output includes `model_version` field
+- `ComplianceReport.model_version` field populated from provider
 
 ### Gate 3 — Boundary (machine)
 
@@ -75,11 +78,13 @@ New tests in `tests/test_vlm_provider.py`:
 
 | Allowed (may create/modify) | Forbidden (must not touch) |
 |-----------------------------|---------------------------|
-| `src/vlm_provider.py` (new) | `src/phase1_crucible.py` |
-| `src/live_track_b.py` (refactor extract) | `src/live_track_a.py` |
-| `src/main.py` (CLI flag addition) | `src/vlm_perception.py` |
-| `tests/test_vlm_provider.py` (new) | `rules.yaml` |
-| `pyproject.toml` (if deps needed) | |
+| `src/vlm_provider.py` (new) | `src/live_track_a.py` |
+| `src/live_track_b.py` (refactor extract) | `src/vlm_perception.py` |
+| `src/main.py` (CLI flag + `VLMError` catch) | `rules.yaml` |
+| `src/phase1_crucible.py` (**metadata only**: add `model_version: str = ""` to `ComplianceReport`) | |
+| `tests/test_vlm_provider.py` (new) | |
+| `requirements.txt` (add `google-generativeai`) | |
+| `pyproject.toml` (isort config) | |
 
 ### Gate 4 — Human (1 question, under 2 min)
 

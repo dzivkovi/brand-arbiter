@@ -26,6 +26,7 @@ VLM responses are currently parsed with custom code and error handling. Both Cla
 - See ADR-0007 for decision rationale
 - Depends on TODO-011 (provider abstraction) and TODO-012 (domain schema this TODO enforces at API level)
 - The domain schema (defined in TODO-012) includes: entities, bboxes, bbox_confidence, rule_assessments, extracted_text
+- **Interface contract from 011:** The provider protocol already includes `schema: dict | None = None` as a forward-compatible parameter. This TODO adds schema handling to `ClaudeProvider` and `GeminiProvider` implementations — the protocol signature stays unchanged.
 
 ## Scope Boundaries
 

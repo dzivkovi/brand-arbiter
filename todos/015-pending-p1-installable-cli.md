@@ -16,7 +16,7 @@ Brand Arbiter needs a user-friendly CLI for demos, CI/CD integration, and teachi
 
 - [ ] CLI command: `brand-arbiter scan <image> --rules <yaml> [--provider gemini|claude] [--dry-run]`
 - [ ] Installable via pip: `pip install brand-arbiter` (or `pip install -e .` for development)
-- [ ] Outputs structured compliance report (JSON) to stdout
+- [ ] Outputs structured compliance report (JSON) to stdout — includes `model_version` from provider (added by TODO-011)
 - [ ] `--dry-run` mode works without API keys (mocked VLM responses)
 - [ ] `--verbose` mode shows per-gate decision trace
 - [ ] Exit code reflects overall result: 0=PASS, 1=FAIL, 2=ESCALATED
