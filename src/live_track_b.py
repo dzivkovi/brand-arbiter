@@ -210,6 +210,51 @@ RULE_PROMPTS = {
 
 
 # ============================================================================
+# Rule Evaluation Criteria — Step 2 content per rule (reusable by vlm_perception.py)
+# ============================================================================
+# These are the domain-specific assessment instructions extracted from the full
+# prompts above. Entity detection (Step 1), confidence rubric (Step 3), and
+# output format are handled by the unified prompt in vlm_perception.py.
+# RULE_PROMPTS above remains intact for backward compatibility with
+# call_live_track_b() which still does one-rule-per-call.
+
+RULE_EVALUATION_CRITERIA: dict[str, str] = {
+    "MC-PAR-001": (
+        "Evaluate whether all payment brand logos are displayed with equal visual prominence. Consider:\n"
+        "- Relative pixel area (are they roughly the same size?)\n"
+        "- Placement hierarchy (is one in a prime position like center-top while another is in a footer?)\n"
+        "- Color treatment (is one full-color while another is greyed out?)\n"
+        "- Visual weight (does one dominate attention due to contrast, surrounding whitespace, "
+        "or proximity to key content?)\n\n"
+        "Write your reasoning in detail BEFORE stating your conclusion.\n\n"
+        'Conclude with: "PARITY_HOLDS: true" (logos have roughly equal prominence) '
+        'or "PARITY_HOLDS: false" (one brand visually dominates).'
+    ),
+    "MC-CLR-002": (
+        "Evaluate whether the Mastercard logo has adequate clear space (breathing room). Consider:\n"
+        "- Distance to nearest competing logo (is it crowded by other brands?)\n"
+        "- Background complexity (is the logo placed over busy patterns, gradients, or photographs?)\n"
+        "- Text intrusion (does promotional text, taglines, or fine print crowd the logo?)\n"
+        "- Edge-of-frame cutoff (is the logo too close to the image boundary?)\n"
+        "- Overall visual clutter in the logo's immediate vicinity\n\n"
+        "Write your reasoning in detail BEFORE stating your conclusion.\n\n"
+        'Conclude with: "CLEAR_SPACE_ADEQUATE: true" (logo has sufficient breathing room) '
+        'or "CLEAR_SPACE_ADEQUATE: false" (logo feels crowded or cramped).'
+    ),
+    "BC-DOM-001": (
+        "Assess whether the subject brand (Barclays) is visually dominant over the "
+        "reference brand (Mastercard) in a co-branded marketing asset. Consider:\n"
+        "- Relative logo size (Barclays should be noticeably larger)\n"
+        "- Placement hierarchy (Barclays in more prominent position)\n"
+        "- Visual weight (color contrast, spacing)\n\n"
+        "Write your reasoning in detail BEFORE stating your conclusion.\n\n"
+        'Conclude with: "BRAND_DOMINANCE: true" (subject brand is clearly dominant / PASS) '
+        'or "BRAND_DOMINANCE: false" (subject brand is NOT dominant enough / FAIL).'
+    ),
+}
+
+
+# ============================================================================
 # Image Encoding
 # ============================================================================
 
