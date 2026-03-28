@@ -5,10 +5,10 @@ Updated 2026-03-27 after TODO-011 completion and contract audit.
 ## Dependency DAG
 
 ```
-011 ✅ ──┬──> 012 ──┬──> 014
-         │          └──> 005 ──┬──> 015
-         │                     └──> 006 ──> 013
-         └──> 021 (parallel with 012, needs golden images)
+011 ──┬──> 012 ──┬──> 014
+      │          └──> 005 ──┬──> 015
+      │                     └──> 006 ──> 013
+      └──> 021 (parallel with 012, needs golden images)
 ```
 
 ## Wave Execution Order
@@ -21,19 +21,21 @@ Updated 2026-03-27 after TODO-011 completion and contract audit.
 
 Delivered: `VLMProvider` Protocol, `ClaudeProvider`, `GeminiProvider` (gemini-3-flash-preview), `VLMError`, `--provider` CLI flag, `ComplianceReport.model_version`. 168 tests. Codex-reviewed x3.
 
-### Wave 2 — NEXT (parallel)
+### Wave 2 — COMPLETE
+
+| TODO | Description | Status |
+|------|------------|--------|
+| 012 | Unified VLM Perception Module | **Merged** (PR #2) |
+| 021 | Evaluation Baseline | **In progress** — golden dataset ready (11 images), benchmark script pending |
+
+Delivered: `vlm_perception.py` with `perceive()`, `PerceptionResult`/`PerceivedEntity`/`RuleJudgment` types, `parse_perception_response()`, `build_unified_prompt()`. 233 tests. Codex-reviewed (3 contract gaps closed).
+
+### Wave 3 — NEXT (after 012 ✅)
 
 | TODO | Description | Deps | Notes |
 |------|------------|------|-------|
-| 012 | Unified VLM Perception Module | 011 ✅ | Single VLM call → entities + bboxes + bbox_confidence + judgments + text. Creates `vlm_perception.py`. Does NOT rewire `main.py` pipeline (that's 005). |
-| 021 | Evaluation Baseline | 011 ✅ | Golden dataset (5-10 images) + benchmark script. Parallel with 012 — only needs providers. **Blocked on:** Daniel collecting/creating golden images. |
-
-### Wave 3 — after 012
-
-| TODO | Description | Deps | Notes |
-|------|------------|------|-------|
-| 014 | Structured Outputs | 011 ✅, 012 | Add `strict: true` (Claude) / `response_schema` (Gemini) to providers. Protocol already has `schema` param from 011. |
-| 005 | Live Track A (pipeline rewire) | 011 ✅, 012 | **Owns the `main.py` pipeline flow change.** VLM perception → Track A → Arbitrator. |
+| 014 | Structured Outputs | 011 ✅, 012 ✅ | Add `strict: true` (Claude) / `response_schema` (Gemini) to providers. Protocol already has `schema` param from 011. |
+| 005 | Live Track A (pipeline rewire) | 011 ✅, 012 ✅ | **Owns the `main.py` pipeline flow change.** VLM perception → Track A → Arbitrator. |
 
 ### Wave 4 — after 005
 

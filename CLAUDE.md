@@ -79,6 +79,7 @@ cd src && python main.py --scenario barclays_cobrand --cobrand --dry-run
 
 ```bash
 cd src && python main.py --scenario hard_case
+cd src && python main.py --scenario hard_case --provider gemini
 cd src && python main.py --scenario all
 ```
 
@@ -113,9 +114,24 @@ All domain types, the arbitration engine, and test harness live in one file:
 - `evaluate_track_a()`: Routes by `rule_id` — parity (area ratio), clear space (edge distance), or brand dominance (subject/reference ratio). **Bbox-agnostic** — works identically regardless of bounding box source.
 - `compute_min_edge_distance()`: Calculates pixel gap between two bounding boxes
 
+### Key components in `src/vlm_provider.py`
+
+- `VLMProvider` Protocol: Minimal interface — `analyze(image_path, prompt, schema=None) -> str`. Transport layer only; parsing stays in `parse_track_b_response()`.
+- `ClaudeProvider`: Anthropic Claude Vision API (default: `claude-sonnet-4-20250514`)
+- `GeminiProvider`: Google Gemini Vision API via `google-genai` SDK (default: `gemini-3-flash-preview`). Auto-detects `GOOGLE_API_KEY` or `GEMINI_API_KEY` from env.
+- `VLMError`: Provider-agnostic exception — wraps SDK-specific errors so pipeline catches one type
+- `get_provider(name)`: Factory resolving `"claude"` or `"gemini"` to a provider instance
+
+### Key components in `src/vlm_perception.py`
+
+- `perceive()`: Single VLM call per image returning entities + bboxes + bbox_confidence + per-rule judgments + extracted text
+- `PerceptionResult` / `PerceivedEntity` / `RuleJudgment`: Domain types for unified perception output
+- `parse_perception_response()`: Strict schema validator for unified perception output (parsing firewall)
+- `build_unified_prompt()`: Composes shared entity detection + per-rule criteria + confidence rubric
+
 ### Key components in `src/live_track_b.py`
 
-- `call_live_track_b()`: Sends image to VLM with structured evaluation prompt, returns `TrackBOutput`
+- `call_live_track_b()`: Sends image to VLM with structured evaluation prompt, returns `TrackBOutput`. Delegates to `ClaudeProvider` (TODO-011 refactor).
 - `parse_track_b_response()`: Strict schema validator — the parsing firewall between VLM output and domain model. Rejects missing fields, wrong types, out-of-range confidence. Raises `ValueError` on any violation.
 - `encode_image_base64()`: Converts local images to base64 for API transmission
 - `RULE_PROMPTS`: Maps rule_id to evaluation rubric (parity prompt, clear space prompt)
@@ -154,13 +170,15 @@ These are architectural invariants, not guidelines:
 
 | Phase | What | Status | Priority |
 |-------|------|--------|----------|
-| Architecture Validation | Mocked dual-track + live semantic (13/13 scenarios) | ✅ Complete | — |
-| **VLM Provider Abstraction** | **Gemini + Claude support with structured outputs** | **Not started** | **P1** |
-| **VLM Perception Module** | **Unified perception: bboxes + semantics + text in one call** | **Not started** | **P1** |
-| **VLM Model Benchmark** | **Gemini Flash vs Pro vs Claude Sonnet on compliance rules** | **Not started** | **P1** |
-| **Live Perception** | **VLM-first bounding boxes → Track A (DINO fallback)** | **Not started** | **P1** |
-| **Real Asset Testing** | **Golden dataset of 50+ marketing images** | **Not started** | **P1** |
-| **Installable CLI** | **`brand-arbiter scan <image> --rules <yaml>`** | **Not started** | **P1** |
+| Architecture Validation | Mocked dual-track + live semantic (13/13 scenarios) | ✅ Complete | -- |
+| VLM Provider Abstraction | Gemini + Claude support, `--provider` CLI flag | ✅ Complete (TODO-011) | -- |
+| VLM Perception Module | Unified perception: bboxes + semantics + text in one call | ✅ Complete (TODO-012) | -- |
+| **Evaluation Baseline** | **Golden dataset (11 images) + benchmark script** | **In progress (TODO-021)** | **P1** |
+| **Structured Outputs** | **API-level schema enforcement (`strict: true` / `response_schema`)** | **Not started (TODO-014)** | **P1** |
+| **Live Perception** | **VLM-first bounding boxes into Track A pipeline** | **Not started (TODO-005)** | **P1** |
+| **Real Asset Testing** | **Real marketing images + demo-ready output** | **Not started (TODO-006)** | **P1** |
+| **VLM Model Benchmark** | **Gemini Flash vs Pro vs Claude Sonnet on compliance rules** | **Not started (TODO-013)** | **P1** |
+| **Installable CLI** | **`brand-arbiter scan <image> --rules <yaml>`** | **Not started (TODO-015)** | **P1** |
 | DINO Fallback | Grounding DINO for low-confidence VLM bboxes | Not started | P2 |
 | Rule Groups | Namespace/grouping support in YAML schema | Not started | P2 |
 | Skill Packaging | SKILL.md for Claude Cowork integration | Not started | P2 |
@@ -174,6 +192,9 @@ These are architectural invariants, not guidelines:
 - `docs/architecture-one-pager.md` — Visual pipeline overview for exec/demo audiences
 - `docs/demo-playbook.md` — Rehearsable 5-minute demo script with talking points
 - `docs/walkthrough-lab-results.md` — Scenario cheat sheet (predicted vs actual outcomes)
+- `docs/evaluation-framework.md` — VLM quality evaluation methodology (metrics, ground truth, calibration)
 - `docs/adr/` — Architecture Decision Records (Michael Nygard template, one file per decision)
+- `test_assets/golden/` — 11 controlled test images with `ground_truth.yaml` manifest (v2, area-corrected, 3rd-party validated)
+- `plans/p1-execution-roadmap.md` — P1 wave execution order with dependency DAG
 
 **Remember: Always validate your code locally and follow specs/agent-rules.md before auto-committing.**
