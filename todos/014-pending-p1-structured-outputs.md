@@ -19,9 +19,8 @@ VLM responses are currently parsed with custom code and error handling. Both Cla
 - [x] Schema defined in shared leaf module (`perception_schema.py`), imported by both providers
 - [x] ADR-0002 (Boolean polarity) remains in prompts as best practice
 - [x] Tests verify schema compliance for both providers (mock mode)
-- [ ] Wiring `perceive()` to pass schema to providers (deferred — requires editing `vlm_perception.py`)
 
-**Scope clarification (post-Codex review):** This TODO adds structured output *capability* to both providers and defines the shared schema. It does NOT wire the schema into every call site. The legacy `call_live_track_b()` path uses legacy prompts + legacy parser and must not use the unified schema. The unified `perceive()` path in `vlm_perception.py` is owned by TODO-012 and was not modified. End-to-end enforcement requires a follow-up TODO that wires `perceive()` to pass `schema=PERCEPTION_JSON_SCHEMA`.
+**Scope:** This TODO adds structured output *capability* to both providers and defines the shared schema. End-to-end wiring (`perceive()` passing schema to providers) is tracked separately in TODO-023.
 
 ## Notes
 
