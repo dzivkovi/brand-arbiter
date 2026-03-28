@@ -14,13 +14,13 @@ Track A currently uses hardcoded bounding boxes from `MOCK_TRACK_A_SCENARIOS`. F
 
 ## Acceptance Criteria
 
-- [ ] VLM bounding boxes fed into existing `evaluate_track_a()` pipeline (no Track A code changes — already bbox-agnostic)
-- [ ] Pipeline in `main.py` rewired: VLM perception before Track A evaluation (**this TODO owns the pipeline flow change** — 012 creates the module, 005 integrates it)
-- [ ] `bbox_confidence` field ("high"/"medium"/"low") included in VLM output (consumed from 012's schema)
-- [ ] Mock scenarios still available for `--dry-run` mode
-- [ ] ADR-0001 (deterministic short-circuit) still works: Track A FAIL short-circuits regardless of bbox source
+- [x] VLM bounding boxes fed into existing `evaluate_track_a()` pipeline (no Track A code changes — already bbox-agnostic)
+- [x] Pipeline in `main.py` rewired: VLM perception before Track A evaluation (**this TODO owns the pipeline flow change** — 012 creates the module, 005 integrates it)
+- [x] `bbox_confidence` field ("high"/"medium"/"low") included in VLM output (consumed from 012's schema)
+- [x] Mock scenarios still available for `--dry-run` mode
+- [x] ADR-0001 (deterministic short-circuit) still works: Track A FAIL short-circuits regardless of bbox source
 - [ ] At least one end-to-end test with real VLM call (not dry-run) — can use existing `test_assets/` images
-- [ ] All existing 145+ tests still pass (130+ need zero changes; ~15 integration tests need mock updates)
+- [x] All existing 258 tests still pass; 12 rewritten for new flow, 11 new tests added (269 total)
 
 ## Notes
 

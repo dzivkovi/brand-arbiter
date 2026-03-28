@@ -17,6 +17,7 @@ import json
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from perception_schema import PERCEPTION_JSON_SCHEMA
 from vlm_provider import VLMProvider
 
 # ============================================================================
@@ -381,7 +382,7 @@ def perceive(
         return _mock_perception_output(active_rules)
 
     prompt = build_unified_prompt(active_rules)
-    raw_text = provider.analyze(image_path, prompt)
+    raw_text = provider.analyze(image_path, prompt, schema=PERCEPTION_JSON_SCHEMA)
     output = parse_perception_response(raw_text)
     output.model_version = provider.model_version
 
