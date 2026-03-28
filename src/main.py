@@ -248,7 +248,7 @@ def _build_escalated_assessment(
         final_result=Result.ESCALATED,
         track_a=_serialize_track_a(track_a),
         track_b=None,
-        arbitration_log=("Track B parse failure — escalated to human review"),
+        arbitration_log=f"Track B unusable: {reason} — escalated to human review",
         escalation_reasons=[f"Track B unusable: {reason}"],
     )
 
