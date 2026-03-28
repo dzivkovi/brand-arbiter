@@ -25,54 +25,11 @@ from google import genai
 from google.genai import types as genai_types
 from PIL import Image
 
-# ============================================================================
-# Perception JSON Schema (TODO-014 — single definition, both providers)
-# ============================================================================
-# Standard JSON Schema matching PerceptionOutput from vlm_perception.py.
-# Claude enforces via tool input_schema; Gemini via response_json_schema.
-# This is a structural contract — domain validation still lives in the parser.
+from perception_schema import PERCEPTION_JSON_SCHEMA
 
-PERCEPTION_JSON_SCHEMA: dict = {
-    "type": "object",
-    "required": ["entities", "rule_judgments"],
-    "additionalProperties": False,
-    "properties": {
-        "entities": {
-            "type": "array",
-            "items": {
-                "type": "object",
-                "required": ["label", "bbox", "bbox_confidence", "visibility"],
-                "additionalProperties": False,
-                "properties": {
-                    "label": {"type": "string"},
-                    "bbox": {
-                        "type": "array",
-                        "items": {"type": "number"},
-                        "minItems": 4,
-                        "maxItems": 4,
-                    },
-                    "bbox_confidence": {"type": "string", "enum": ["high", "medium", "low"]},
-                    "visibility": {"type": "string", "enum": ["full", "partial", "unclear"]},
-                },
-            },
-        },
-        "rule_judgments": {
-            "type": "object",
-            "additionalProperties": {
-                "type": "object",
-                "required": ["semantic_pass", "confidence_score"],
-                "additionalProperties": False,
-                "properties": {
-                    "semantic_pass": {"type": "boolean"},
-                    "confidence_score": {"type": "number", "minimum": 0.10, "maximum": 1.00},
-                    "reasoning_trace": {"type": "string"},
-                    "rubric_penalties": {"type": "array", "items": {"type": "string"}},
-                },
-            },
-        },
-        "extracted_text": {"type": "string"},
-    },
-}
+# Re-export PERCEPTION_JSON_SCHEMA for backward compatibility with existing imports.
+# Source of truth: perception_schema.py (leaf module, no circular deps).
+__all__ = ["PERCEPTION_JSON_SCHEMA"]
 
 # Tool name used by ClaudeProvider for structured output enforcement
 _CLAUDE_TOOL_NAME = "perception_output"

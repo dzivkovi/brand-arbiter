@@ -14,12 +14,14 @@ VLM responses are currently parsed with custom code and error handling. Both Cla
 
 ## Acceptance Criteria
 
-- [x] Claude provider uses tool-use with JSON schema definition (tool_choice forced)
-- [x] Gemini provider uses `response_json_schema` with equivalent schema
-- [x] Both providers enforce the domain schema from TODO-012 at API level (PERCEPTION_JSON_SCHEMA)
-- [x] Custom parsing in `live_track_b.py` simplified (schema enforcement at API level)
+- [x] Claude provider supports structured outputs via tool-use (tool_choice forced)
+- [x] Gemini provider supports structured outputs via `response_json_schema`
+- [x] Schema defined in shared leaf module (`perception_schema.py`), imported by both providers
 - [x] ADR-0002 (Boolean polarity) remains in prompts as best practice
 - [x] Tests verify schema compliance for both providers (mock mode)
+- [ ] Wiring `perceive()` to pass schema to providers (deferred — requires editing `vlm_perception.py`)
+
+**Scope clarification (post-Codex review):** This TODO adds structured output *capability* to both providers and defines the shared schema. It does NOT wire the schema into every call site. The legacy `call_live_track_b()` path uses legacy prompts + legacy parser and must not use the unified schema. The unified `perceive()` path in `vlm_perception.py` is owned by TODO-012 and was not modified. End-to-end enforcement requires a follow-up TODO that wires `perceive()` to pass `schema=PERCEPTION_JSON_SCHEMA`.
 
 ## Notes
 
@@ -72,9 +74,9 @@ New tests:
 | Allowed (may create/modify) | Forbidden (must not touch) |
 |-----------------------------|---------------------------|
 | `src/vlm_provider.py` (add structured output calls) | `src/vlm_perception.py` (schema definition is 012's) |
-| `src/live_track_b.py` (simplify parsing, keep fallback) | `src/phase1_crucible.py` |
-| `tests/test_structured_outputs.py` (new) | `src/live_track_a.py` |
-| | `rules.yaml` |
+| `src/perception_schema.py` (new — shared schema leaf module) | `src/phase1_crucible.py` |
+| `src/live_track_b.py` (simplify parsing, keep fallback) | `src/live_track_a.py` |
+| `tests/test_structured_outputs.py` (new) | `rules.yaml` |
 
 ### Gate 4 — Human (1 question, under 2 min)
 

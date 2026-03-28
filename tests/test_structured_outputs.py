@@ -65,6 +65,12 @@ def _make_fake_image(tmp_path):
 
 
 class TestPerceptionJsonSchema:
+    def test_schema_canonical_source_is_perception_schema(self):
+        """Schema is defined in perception_schema.py (leaf module, no cycles)."""
+        from perception_schema import PERCEPTION_JSON_SCHEMA as canonical
+
+        assert canonical is PERCEPTION_JSON_SCHEMA  # same object, not a copy
+
     def test_schema_is_dict(self):
         """PERCEPTION_JSON_SCHEMA is a dict (standard JSON Schema)."""
         assert isinstance(PERCEPTION_JSON_SCHEMA, dict)
