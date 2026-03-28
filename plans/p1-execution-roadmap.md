@@ -30,14 +30,16 @@ Delivered: `VLMProvider` Protocol, `ClaudeProvider`, `GeminiProvider` (gemini-3-
 
 Delivered: `vlm_perception.py` with `perceive()`, `PerceptionOutput`/`PerceivedEntity`/`RuleJudgment` types, `parse_perception_response()`, `build_unified_prompt()`. 233 tests. Codex-reviewed (3 contract gaps closed).
 
-### Wave 3 — IN PROGRESS (after 012 ✅)
+### Wave 3 — COMPLETE
 
 | TODO | Description | Deps | Status | Notes |
 | --- | --- | --- | --- | --- |
 | 014 | Structured Outputs | 011 ✅, 012 ✅ | **Merged** (PR #3) | ClaudeProvider + GeminiProvider enforce `schema` via tool-use / `response_json_schema`. Leaf module pattern (`perception_schema.py`) breaks circular import. 22 new tests. |
 | 022 | Parser Falsy-Value Bug Fix | 011 ✅, 012 ✅ | **Merged** (PR #4) | Hotfix: `extracted_text = data.get(..., "")` → explicit `is None` check. Closes security constraint 4 (validator cannot invent data). 3 new regression tests. |
-| 023 | Schema Wiring to `perceive()` | 011 ✅, 012 ✅, 014 ✅ | **Deferred to 005** | Pass `schema=PERCEPTION_JSON_SCHEMA` to `provider.analyze()`. 2-line change in `vlm_perception.py`. Absorbed into 005 for single "VLM perception goes live" commit. |
-| 005 | Live Track A (pipeline rewire) | 011 ✅, 012 ✅, 014 ✅ | **Pending** | **Owns the `main.py` pipeline flow change + 023 schema wiring.** VLM perception → Track A → Arbitrator. |
+| 023 | Schema Wiring to `perceive()` | 011 ✅, 012 ✅, 014 ✅ | **Merged** (absorbed into PR #5) | Pass `schema=PERCEPTION_JSON_SCHEMA` to `provider.analyze()`. 2-line change in `vlm_perception.py`. |
+| 005 | Live Track A (pipeline rewire) | 011 ✅, 012 ✅, 014 ✅ | **Merged** (PR #5) | VLM-first pipeline live. `perceive()` → Track A → Arbitrator. Gate 4 validated: violations detected correctly, borderline parity needs DINO fallback. 270 tests. |
+
+Delivered: unified perception pipeline in `main.py`. Single `perceive()` call per image returns entities + bboxes + semantic judgments. Converter functions bridge perception → domain types. Safe escalation on perception failure. Codex-reviewed ×2 (plan + code).
 
 ### Wave 4 — after 005
 
@@ -68,6 +70,9 @@ Delivered: `vlm_perception.py` with `perceive()`, `PerceptionOutput`/`PerceivedE
 | 2026-03-27 | TODO-022 (parser hotfix) created separate from 014 | Codex found falsy-value bypass bug in validator. Parser "cannot invent data" constraint requires explicit `is None` check, not `or ""` idiom. Separate PR avoids scope creep in structured output feature. |
 | 2026-03-27 | TODO-023 (schema wiring) deferred to 005 | 014 adds provider capability; 023 wires schema into `perceive()`. Two-line change. Absorb into 005 for atomic "VLM perception goes live" PR. Prevents extra review cycle. |
 | 2026-03-27 | Schema enforcement verified via Codex contract audit | Both ClaudeProvider (tool-use + `tool_choice` forced) and GeminiProvider (`response_json_schema` + `application/json` mime) enforce same schema. Parser fallback (`parse_track_b_response()`) handles degradation. |
+| 2026-03-28 | Dry-run builds mock PerceptionOutput, not `perceive(dry_run=True)` | Preserves scenario-specific behavior while exercising new converter pipeline. Codex review caught this. |
+| 2026-03-28 | Perception failure → ESCALATED, not exception | `perceive()` errors produce per-rule ESCALATED assessments with review IDs. Codex blocking finding — safety constraint 1 regression. |
+| 2026-03-28 | VLM bbox precision ~85-90% for simple logos | Gate 4 live testing: violations detected correctly, borderline parity false-fails. DINO fallback (017) needed for 0.95-threshold rules. |
 
 ## Contract Audit Status
 

@@ -1,5 +1,5 @@
 ---
-status: pending
+status: completed
 priority: p1
 issue_id: "005"
 tags: [infrastructure, track-a, vlm-first, perception, grounding-dino]

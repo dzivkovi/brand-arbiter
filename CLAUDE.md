@@ -177,9 +177,11 @@ These are architectural invariants, not guidelines:
 
 ## Current Position
 
-**Progress: ~55% of P1 done, 2 tickets to demo MVP.** Last completed: TODO-014 (structured outputs) + TODO-022 (parser hotfix), 2026-03-27.
+**Progress: ~70% of P1 done, pipeline is live.** Last completed: TODO-005 (live perception pipeline) + TODO-023 (schema wiring), 2026-03-28. PR #5.
 
-Next ticket: **TODO-005** (Live Track A) — wires VLM perception into the pipeline. After this, `main.py` produces real compliance verdicts on real images. Then one more ticket (006 or 015) for demo-ready polish.
+`main.py` now produces real compliance verdicts on real images via VLM-first perception (Claude or Gemini). Gate 4 validated: violations correctly detected, borderline parity needs DINO fallback (TODO-017).
+
+Next tickets: **TODO-006** (real asset testing, demo-ready output) or **TODO-015** (installable CLI).
 
 Detail: `plans/p1-execution-roadmap.md` (dependency DAG, wave breakdown, decision log).
 
@@ -193,7 +195,7 @@ Detail: `plans/p1-execution-roadmap.md` (dependency DAG, wave breakdown, decisio
 | Structured Outputs | API-level schema enforcement, leaf module pattern | ✅ Complete (TODO-014) | -- |
 | Parser Hotfix | Falsy-value bypass in perception validator | ✅ Complete (TODO-022) | -- |
 | Evaluation Baseline | Golden dataset (11 images) + benchmark script | In progress (TODO-021) | P1 |
-| **Live Perception** | **VLM-first bboxes into Track A pipeline + schema wiring (023)** | **Next (TODO-005)** | **P1** |
+| Live Perception | VLM-first bboxes into Track A pipeline + schema wiring (023) | ✅ Complete (TODO-005, PR #5) | -- |
 | **Real Asset Testing** | **Real marketing images + demo-ready output** | **Pending (TODO-006)** | **P1** |
 | **VLM Model Benchmark** | **Gemini Flash vs Pro vs Claude Sonnet on compliance rules** | **Pending (TODO-013)** | **P1** |
 | **Installable CLI** | **`brand-arbiter scan <image> --rules <yaml>`** | **Pending (TODO-015)** | **P1** |
