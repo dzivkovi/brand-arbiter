@@ -8,6 +8,15 @@ Before executing any task, you MUST read and strictly adhere to the constraints 
 ## Backlog
 Always check `todos/` before asking for the next task. Files follow the naming convention `{id}-{status}-{priority}-{description}.md` with YAML frontmatter. If you identify technical debt during a refactor, do not fix it immediately without permission; instead, add it as a `pending` todo in `todos/`.
 
+### Completion Checklist (after PR merges)
+
+When a TODO is done (PR merged to main), immediately do all four — no exceptions:
+
+1. Update YAML frontmatter: `status: completed`
+2. Rename file: `{id}-pending-...` → `{id}-completed-...` (use `git mv`)
+3. Update "Current Position" section in this file (CLAUDE.md)
+4. Update `plans/p1-execution-roadmap.md` wave status + decision log if applicable
+
 ## Architecture Decisions
 
 Architectural decisions are recorded in `docs/adr/` using the Michael Nygard template (`docs/adr/template.md`). When completing a major feature or refactor, proactively offer to write the ADR. Every ADR must include `Affects` (files changed) and `Related Debt` (spawned `todos/` items). Not every change needs an ADR — only decisions where alternatives were rejected.
@@ -166,6 +175,14 @@ These are architectural invariants, not guidelines:
 6. Confidence is rubric-based, not self-reported — VLM follows mechanical penalty deductions
 7. Cross-brand conflicts always escalate to human review
 
+## Current Position
+
+**Progress: ~55% of P1 done, 2 tickets to demo MVP.** Last completed: TODO-014 (structured outputs) + TODO-022 (parser hotfix), 2026-03-27.
+
+Next ticket: **TODO-005** (Live Track A) — wires VLM perception into the pipeline. After this, `main.py` produces real compliance verdicts on real images. Then one more ticket (006 or 015) for demo-ready polish.
+
+Detail: `plans/p1-execution-roadmap.md` (dependency DAG, wave breakdown, decision log).
+
 ## Project Phases
 
 | Phase | What | Status | Priority |
@@ -173,12 +190,13 @@ These are architectural invariants, not guidelines:
 | Architecture Validation | Mocked dual-track + live semantic (13/13 scenarios) | ✅ Complete | -- |
 | VLM Provider Abstraction | Gemini + Claude support, `--provider` CLI flag | ✅ Complete (TODO-011) | -- |
 | VLM Perception Module | Unified perception: bboxes + semantics + text in one call | ✅ Complete (TODO-012) | -- |
-| **Evaluation Baseline** | **Golden dataset (11 images) + benchmark script** | **In progress (TODO-021)** | **P1** |
-| **Structured Outputs** | **API-level schema enforcement (`strict: true` / `response_schema`)** | **Not started (TODO-014)** | **P1** |
-| **Live Perception** | **VLM-first bounding boxes into Track A pipeline** | **Not started (TODO-005)** | **P1** |
-| **Real Asset Testing** | **Real marketing images + demo-ready output** | **Not started (TODO-006)** | **P1** |
-| **VLM Model Benchmark** | **Gemini Flash vs Pro vs Claude Sonnet on compliance rules** | **Not started (TODO-013)** | **P1** |
-| **Installable CLI** | **`brand-arbiter scan <image> --rules <yaml>`** | **Not started (TODO-015)** | **P1** |
+| Structured Outputs | API-level schema enforcement, leaf module pattern | ✅ Complete (TODO-014) | -- |
+| Parser Hotfix | Falsy-value bypass in perception validator | ✅ Complete (TODO-022) | -- |
+| Evaluation Baseline | Golden dataset (11 images) + benchmark script | In progress (TODO-021) | P1 |
+| **Live Perception** | **VLM-first bboxes into Track A pipeline + schema wiring (023)** | **Next (TODO-005)** | **P1** |
+| **Real Asset Testing** | **Real marketing images + demo-ready output** | **Pending (TODO-006)** | **P1** |
+| **VLM Model Benchmark** | **Gemini Flash vs Pro vs Claude Sonnet on compliance rules** | **Pending (TODO-013)** | **P1** |
+| **Installable CLI** | **`brand-arbiter scan <image> --rules <yaml>`** | **Pending (TODO-015)** | **P1** |
 | DINO Fallback | Grounding DINO for low-confidence VLM bboxes | Not started | P2 |
 | Rule Groups | Namespace/grouping support in YAML schema | Not started | P2 |
 | Skill Packaging | SKILL.md for Claude Cowork integration | Not started | P2 |
