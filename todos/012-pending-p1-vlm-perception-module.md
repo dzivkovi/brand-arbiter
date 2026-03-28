@@ -1,5 +1,5 @@
 ---
-status: pending
+status: completed
 priority: p1
 issue_id: "012"
 tags: [infrastructure, vlm-first, perception, unified-schema]
@@ -14,14 +14,14 @@ The VLM-first architecture (ADR-0005) requires a single VLM call per image that 
 
 ## Acceptance Criteria
 
-- [ ] `src/vlm_perception.py` created — unified VLM caller
-- [ ] Single VLM call per image returns: entities + bboxes + bbox_confidence + per-rule semantic judgments + extracted text
-- [ ] Unified domain output schema defined in `vlm_perception.py` (field names, types, structure — source of truth for TODO-014 enforcement)
-- [ ] `bbox_confidence` field ("high"/"medium"/"low") per entity
-- [ ] Extends existing `live_track_b.py` patterns (don't rewrite from scratch)
-- [ ] Importable from `main.py`; full pipeline flow change (VLM before Track A) deferred to TODO-005
-- [ ] Backward-compatible: `parse_track_b_response()` still works for old-format responses
-- [ ] Mock/dry-run mode preserved (no API keys required for testing)
+- [x] `src/vlm_perception.py` created — unified VLM caller
+- [x] Single VLM call per image returns: entities + bboxes + bbox_confidence + per-rule semantic judgments + extracted text
+- [x] Unified domain output schema defined in `vlm_perception.py` (field names, types, structure — source of truth for TODO-014 enforcement)
+- [x] `bbox_confidence` field ("high"/"medium"/"low") per entity
+- [x] Extends existing `live_track_b.py` patterns (don't rewrite from scratch)
+- [x] Importable from `main.py`; full pipeline flow change (VLM before Track A) deferred to TODO-005
+- [x] Backward-compatible: `parse_track_b_response()` still works for old-format responses
+- [x] Mock/dry-run mode preserved (no API keys required for testing)
 
 ## Notes
 
