@@ -42,6 +42,7 @@ from phase1_crucible import (
     detect_collisions,
 )
 from vlm_perception import PerceivedEntity, PerceptionOutput, RuleJudgment, perceive
+from vlm_provider import VLMError
 
 # Rules to evaluate for every image
 ACTIVE_RULES = ["MC-PAR-001", "MC-CLR-002"]
@@ -252,6 +253,51 @@ def _build_escalated_assessment(
     )
 
 
+def _build_perception_failure_report(
+    rule_ids: list[str],
+    asset_id: str,
+    reason: str,
+    collisions: list,
+    model_version: str,
+    store: LearningStore,
+) -> ComplianceReport:
+    """Build a ComplianceReport with all rules ESCALATED when perception fails.
+
+    No bboxes were returned, so track_a and track_b are both None.
+    Each rule gets its own ESCALATED assessment with a review ID for audit.
+    """
+    rule_results: list[AssessmentOutput] = []
+    for rule_id in rule_ids:
+        assessment = AssessmentOutput(
+            review_id=_generate_review_id(),
+            rule_id=rule_id,
+            asset_id=asset_id,
+            timestamp=_now(),
+            final_result=Result.ESCALATED,
+            track_a=None,
+            track_b=None,
+            arbitration_log="VLM perception failed — escalated to human review",
+            escalation_reasons=[f"Perception failure: {reason}"],
+        )
+        store.record_assessment(assessment)
+        rule_results.append(assessment)
+
+    overall = ComplianceReport.worst_case(
+        [a.final_result for a in rule_results],
+        collisions=collisions,
+    )
+    brand_results = ComplianceReport.group_by_brand(rule_results, RULE_CATALOG)
+    return ComplianceReport(
+        asset_id=asset_id,
+        timestamp=_now(),
+        rule_results=rule_results,
+        overall_result=overall,
+        brand_results=brand_results,
+        collisions=collisions,
+        model_version=model_version,
+    )
+
+
 # ============================================================================
 # Pipeline
 # ============================================================================
@@ -288,7 +334,11 @@ def run_pipeline(
         perception = _build_mock_perception(scenario, rule_ids)
     elif provider is not None:
         active_rules_dict = {rid: RULE_CATALOG[rid] for rid in rule_ids}
-        perception = perceive(image_path, active_rules_dict, provider)
+        try:
+            perception = perceive(image_path, active_rules_dict, provider)
+        except (ValueError, VLMError) as e:
+            # Perception failed entirely — escalate all rules (safety constraint 1)
+            return _build_perception_failure_report(rule_ids, asset_id, str(e), collisions, model_version, store)
     else:
         raise ValueError("Live mode requires a provider. Use --dry-run for mock mode.")
 

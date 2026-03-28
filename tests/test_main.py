@@ -30,6 +30,7 @@ from phase1_crucible import (
     TrackAOutput,
 )
 from vlm_perception import PerceivedEntity, PerceptionOutput, RuleJudgment
+from vlm_provider import VLMError
 
 # ============================================================================
 # Helper: build a controlled PerceptionOutput for testing
@@ -244,11 +245,28 @@ class TestPerceptionPipeline:
         assert any("no judgment" in r.lower() for r in clearspace.escalation_reasons)
 
     @patch("main.perceive", side_effect=ValueError("VLM returned invalid JSON"))
-    def test_perception_error_propagates(self, mock_perceive):
-        """When perceive() raises, error propagates to caller."""
+    def test_perception_error_escalates_all_rules(self, mock_perceive):
+        """When perceive() fails, all rules get ESCALATED with audit trail."""
         provider = MagicMock()
-        with pytest.raises(ValueError, match="VLM returned invalid JSON"):
-            run_pipeline("hard_case", "fake.png", dry_run=False, provider=provider)
+        report = run_pipeline("hard_case", "fake.png", dry_run=False, provider=provider)
+        assert report.overall_result == Result.ESCALATED
+        assert len(report.rule_results) == 2  # MC-PAR-001 + MC-CLR-002
+        for assessment in report.rule_results:
+            assert assessment.final_result == Result.ESCALATED
+            assert assessment.track_a is None  # No bboxes available
+            assert assessment.track_b is None
+            assert assessment.review_id.startswith("rev-")
+            assert any("Perception failure" in r for r in assessment.escalation_reasons)
+
+    @patch("main.perceive", side_effect=VLMError("Claude API call failed: 503"))
+    def test_vlm_api_error_escalates_all_rules(self, mock_perceive):
+        """When perceive() raises VLMError, all rules get ESCALATED."""
+        provider = MagicMock()
+        report = run_pipeline("hard_case", "fake.png", dry_run=False, provider=provider)
+        assert report.overall_result == Result.ESCALATED
+        for assessment in report.rule_results:
+            assert assessment.final_result == Result.ESCALATED
+            assert any("Perception failure" in r for r in assessment.escalation_reasons)
 
     @patch("main.perceive")
     def test_perceive_receives_active_rules_and_provider(self, mock_perceive):
