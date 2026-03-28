@@ -28,7 +28,7 @@ Delivered: `VLMProvider` Protocol, `ClaudeProvider`, `GeminiProvider` (gemini-3-
 | 012 | Unified VLM Perception Module | **Merged** (PR #2) |
 | 021 | Evaluation Baseline | **In progress** — golden dataset ready (11 images), benchmark script pending |
 
-Delivered: `vlm_perception.py` with `perceive()`, `PerceptionResult`/`PerceivedEntity`/`RuleJudgment` types, `parse_perception_response()`, `build_unified_prompt()`. 233 tests. Codex-reviewed (3 contract gaps closed).
+Delivered: `vlm_perception.py` with `perceive()`, `PerceptionOutput`/`PerceivedEntity`/`RuleJudgment` types, `parse_perception_response()`, `build_unified_prompt()`. 233 tests. Codex-reviewed (3 contract gaps closed).
 
 ### Wave 3 — IN PROGRESS (after 012 ✅)
 

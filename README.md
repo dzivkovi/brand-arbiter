@@ -156,16 +156,39 @@ brand-arbiter/
 
 ## Built With
 
-- Python 3.11+
-- [Anthropic SDK](https://github.com/anthropics/anthropic-sdk-python) / [Google Generative AI](https://ai.google.dev/) (VLM providers)
-- [Pillow](https://python-pillow.org/) (image handling)
-- OpenCV / colormath (deterministic measurements)
+- **Python 3.12+** — developed and tested on 3.12; uses PEP 604 union syntax at runtime
+- **[Anthropic SDK](https://github.com/anthropics/anthropic-sdk-python)** — Claude Vision API with structured outputs via tool-use
+- **[Google GenAI SDK](https://ai.google.dev/)** — Gemini Vision API with `response_json_schema` enforcement
+- **[Pillow](https://python-pillow.org/)** — image handling for Gemini provider
+- **[PyYAML](https://pyyaml.org/)** — rule catalog parsing (`rules.yaml` is the single source of truth)
+- **[pytest](https://docs.pytest.org/)** — 258 tests covering arbitration, perception, structured outputs, and pipeline integration
+- **[ruff](https://docs.astral.sh/ruff/)** — linting and formatting (the only dev tool)
+
+OpenCV and colormath are planned for Phase 3 (live deterministic measurement on real bounding boxes) but not yet in use.
 
 ## Origin
 
 Brand Arbiter grew out of a universal pattern for business process automation that combines deterministic rules with semantic AI judgment. The architecture was validated against public [Mastercard Brand Center](https://www.mastercard.com/brandcenter/ca/en/brand-requirements/mastercard.html) guidelines but is designed to be brand-agnostic: swap the rule catalog and reference assets, and the engine works for any brand with measurable + subjective compliance rules.
 
 Applicable domains: financial services, franchising, consumer brands, luxury goods, pharmaceuticals — any industry where brand compliance has both measurable and subjective components.
+
+## Dark Factory Readiness
+
+Brand Arbiter is built almost entirely through agent-assisted development — Claude Code writes the code, Codex reviews it, and the human (Daniel) architects, directs, and validates. This workflow is a deliberate experiment in what it takes to trust autonomous agents with real engineering work.
+
+The core lesson so far: **autonomous agents don't eliminate documentation discipline — they make it load-bearing.**
+
+A human reading stale docs mentally adjusts. An agent takes them literally. If CLAUDE.md says the system uses `strict: true` but the code actually uses tool-use, the next agent session will generate wrong code with full confidence. Documentation accuracy becomes an operational safety property, not a nice-to-have.
+
+This project enforces that through:
+
+- **Three-bucket documentation rule:** Living docs (CLAUDE.md, roadmap) are always rewritten to current truth. Historical docs (session notes, old plans) are never rewritten. Decision records (ADRs, completed TODOs) get post-implementation notes appended, never silently edited.
+- **Completion checklist:** Four mandatory steps after every PR merge — update frontmatter, rename files, update the living bookmark, update the roadmap. Agents follow this mechanically.
+- **File-based backlog with encoded status:** TODOs live in `todos/` with status in both YAML frontmatter and filename. No external tools required — `ls todos/` tells you the project state.
+
+We're not at dark factory yet. We're learning the preconditions. The gap between "agent writes good code" and "agent works autonomously without supervision" is entirely about the quality of the map the agent navigates by.
+
+Full methodology: [`docs/solutions/process-issues/documentation-drift-three-bucket-rule.md`](docs/solutions/process-issues/documentation-drift-three-bucket-rule.md)
 
 ## Author
 

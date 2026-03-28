@@ -39,7 +39,7 @@ When VLM bbox confidence is low, Grounding DINO (Apache 2.0, zero-shot) serves a
 
 Brand Arbiter supports multiple VLM providers through a minimal abstraction:
 - **Gemini** (Flash for cost-effective scanning, Pro for accuracy-critical rules)
-- **Claude** (structured outputs via `strict: true`)
+- **Claude** (structured outputs via tool-use with forced `tool_choice`)
 
 Both use API-level structured outputs (ADR-0007). Model selection is empirical — benchmark on actual rules, don't assume newer = better.
 
@@ -101,7 +101,7 @@ pip install -r requirements.txt
 
 Rules are defined in `rules.yaml` (the single source of truth). The engine loads them at startup — to change a threshold or add a rule, edit the YAML file, not the Python code.
 
-The system processes brand compliance rules through a VLM-first pipeline:
+The system processes brand compliance rules through a VLM-first pipeline (target architecture — TODO-005 wires VLM perception into the live pipeline; currently `main.py` uses mock bboxes in `--dry-run` mode):
 
 - **VLM Perception:** Gemini or Claude analyzes the image, returning entities with bounding boxes, semantic judgments, and extracted text in a single call (ADR-0005). When bbox confidence is low, Grounding DINO provides precision fallback.
 - **Deterministic Measurement:** OpenCV/colormath computes exact metrics (area ratios, spacing, colors) from VLM-provided bounding boxes. `evaluate_track_a()` is bbox-agnostic — it doesn't care where coordinates come from.
@@ -134,7 +134,7 @@ All domain types, the arbitration engine, and test harness live in one file:
 ### Key components in `src/vlm_perception.py`
 
 - `perceive()`: Single VLM call per image returning entities + bboxes + bbox_confidence + per-rule judgments + extracted text
-- `PerceptionResult` / `PerceivedEntity` / `RuleJudgment`: Domain types for unified perception output
+- `PerceptionOutput` / `PerceivedEntity` / `RuleJudgment`: Domain types for unified perception output
 - `parse_perception_response()`: Strict schema validator for unified perception output (parsing firewall)
 - `build_unified_prompt()`: Composes shared entity detection + per-rule criteria + confidence rubric
 

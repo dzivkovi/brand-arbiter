@@ -64,10 +64,18 @@ The provider abstraction (`vlm_provider.py`) handles the difference between Clau
 
 ## Related Debt
 
-- `todos/014-pending-p1-structured-outputs.md` — adopt structured outputs for all VLM calls
+- `todos/014-completed-p1-structured-outputs.md` — adopt structured outputs for all VLM calls (completed, PR #3)
 
 ## Research References
 
 - Claude structured outputs: `strict: true` parameter, GA February 2026
 - Gemini structured outputs: `response_schema` parameter, equivalent guarantee
 - ADR-0002: Explicit Boolean polarity remains valid as prompt-level best practice
+
+## Post-Implementation Note
+
+Implemented 2026-03-27 (TODO-014, PR #3).
+
+Claude structured outputs landed via **tool-use with forced `tool_choice`**, not `strict: true` as originally assumed. The provider defines a tool with `input_schema=schema` and forces the model to call it — the tool's input JSON becomes the structured response. Gemini uses `response_json_schema` + `response_mime_type="application/json"` as planned.
+
+Shared schema lives in `perception_schema.py` (leaf module, zero project imports) to avoid circular dependencies between `vlm_provider.py` and `vlm_perception.py`. See TODO-014 decision log for leaf module pattern rationale.
