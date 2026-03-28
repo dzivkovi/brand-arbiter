@@ -1,18 +1,16 @@
 """
 Brand Arbiter — Integration Script
 ====================================
-Wires Live Track A (bounding box math) and Live Track B (Claude Vision API)
-together, feeding both outputs into the Arbitrator.
+VLM-first pipeline: unified perception → deterministic Track A →
+semantic judgment extraction → Arbitrator.
 
-Track A: Deterministic area ratio from bounding boxes.
-         (Phase 3 will replace mock bboxes with YOLO detections.)
-Track B: Claude Vision API with structured confidence rubric.
+Live mode: perceive() returns entities + bboxes + rule judgments in one VLM call.
+Dry-run:   scenario-aware mock PerceptionOutput, same pipeline path.
 
 Usage:
-  python src/main.py --image test_assets/parity_hard_case.png
   python src/main.py --scenario hard_case
-  python src/main.py --scenario all
-  python src/main.py --scenario all --dry-run   # no API call, uses mock Track B
+  python src/main.py --scenario all --dry-run   # no API call, uses mock perception
+  python src/main.py --scenario hard_case --provider gemini
 
 Author: Daniel Zivkovic, Magma Inc.
 Date: March 22, 2026
@@ -27,16 +25,15 @@ from live_track_a import evaluate_track_a
 from live_track_b import (
     MOCK_TRACK_A_SCENARIOS,
     SCENARIO_IMAGES,
-    _build_prompt,
-    call_live_track_b,
-    parse_track_b_response,
 )
 from phase1_crucible import (
     RULE_CATALOG,
     AssessmentOutput,
     ComplianceReport,
+    DetectedEntity,
     LearningStore,
     Result,
+    TrackBOutput,
     _generate_review_id,
     _load_yaml,
     _now,
@@ -44,6 +41,7 @@ from phase1_crucible import (
     arbitrate,
     detect_collisions,
 )
+from vlm_perception import PerceivedEntity, PerceptionOutput, RuleJudgment, perceive
 from vlm_provider import VLMError
 
 # Rules to evaluate for every image
@@ -54,14 +52,93 @@ IMAGE_TO_SCENARIO = {Path(v).name: k for k, v in SCENARIO_IMAGES.items()}
 
 
 # ============================================================================
-# Mock Track B (for --dry-run without API key)
+# Converters: PerceptionOutput → Track A / Track B domain types
 # ============================================================================
 
 
-def mock_track_b_for_scenario(scenario: str, rule_id: str = "MC-PAR-001"):
-    """Return a plausible mocked Track B output for dry-run mode."""
-    from phase1_crucible import TrackBOutput
+def _perceived_to_detected(perceived: list[PerceivedEntity]) -> list[DetectedEntity]:
+    """Convert VLM PerceivedEntity list to Track A DetectedEntity list.
 
+    DetectedEntity.__post_init__ computes area from bbox automatically.
+    bbox_confidence and visibility are perception metadata — Track A
+    doesn't need them (it's pure bbox math).
+    """
+    return [DetectedEntity(label=e.label, bbox=list(e.bbox)) for e in perceived]
+
+
+def _judgment_to_track_b(judgment: RuleJudgment, entities: list[DetectedEntity]) -> TrackBOutput:
+    """Convert VLM RuleJudgment + entities to TrackBOutput for arbitration.
+
+    The entities are the same ones Track A used — entity reconciliation
+    in arbitrate() will trivially pass since both tracks see the same set.
+    """
+    return TrackBOutput(
+        rule_id=judgment.rule_id,
+        entities=entities,
+        semantic_pass=judgment.semantic_pass,
+        confidence_score=judgment.confidence_score,
+        reasoning_trace=judgment.reasoning_trace,
+        rubric_penalties=judgment.rubric_penalties,
+    )
+
+
+# ============================================================================
+# Mock Perception (for --dry-run: scenario-aware, exercises new pipeline)
+# ============================================================================
+
+
+def _build_mock_perception(scenario: str, rule_ids: list[str]) -> PerceptionOutput:
+    """Build a PerceptionOutput from existing mock data for dry-run mode.
+
+    Reuses MOCK_TRACK_A_SCENARIOS for entities (preserving scenario-specific
+    bounding boxes) and mock_track_b_for_scenario() for semantic judgments.
+
+    This ensures dry-run exercises the same converter path as live mode:
+    PerceptionOutput → _perceived_to_detected → evaluate_track_a → arbitrate.
+    """
+    mock = MOCK_TRACK_A_SCENARIOS.get(scenario)
+    if mock is None:
+        raise ValueError(f"No mock data for scenario: {scenario}")
+
+    # Convert DetectedEntity → PerceivedEntity (add perception metadata)
+    entities = [
+        PerceivedEntity(
+            label=e.label,
+            bbox=list(e.bbox),
+            bbox_confidence="high",
+            visibility="full",
+        )
+        for e in mock.entities
+    ]
+
+    # Build mock judgments from existing per-rule mock data
+    rule_judgments: dict[str, RuleJudgment] = {}
+    for rule_id in rule_ids:
+        rule_config = RULE_CATALOG.get(rule_id, {})
+        # Only build judgments for rules with semantic_spec
+        if "semantic_spec" not in rule_config:
+            continue
+        mock_b = _mock_semantic_judgment(scenario, rule_id)
+        rule_judgments[rule_id] = RuleJudgment(
+            rule_id=rule_id,
+            semantic_pass=mock_b["semantic_pass"],
+            confidence_score=mock_b["confidence_score"],
+            reasoning_trace=mock_b["reasoning_trace"],
+        )
+
+    return PerceptionOutput(
+        entities=entities,
+        rule_judgments=rule_judgments,
+        model_version="dry-run (mock)",
+    )
+
+
+def _mock_semantic_judgment(scenario: str, rule_id: str) -> dict:
+    """Return mock semantic judgment data for a scenario + rule.
+
+    Extracted from the old mock_track_b_for_scenario() — just the
+    semantic fields (pass, confidence, reasoning), not the full TrackBOutput.
+    """
     # Parity-focused mocks
     parity_map = {
         "clear_violation": (False, 0.95, "Visa clearly dominates — much larger, prime position."),
@@ -73,7 +150,6 @@ def mock_track_b_for_scenario(scenario: str, rule_id: str = "MC-PAR-001"):
         "barclays_cobrand": (False, 0.93, "Barclays logo is noticeably larger — Mastercard lacks parity."),
     }
 
-    # Clear-space-focused mocks
     clearspace_map = {
         "clear_space_violation": (False, 0.93, "MC logo is crowded — competitor logo only 10px away."),
         "clear_space_compliant": (True, 0.95, "MC logo has adequate breathing room, 30px gap."),
@@ -81,7 +157,6 @@ def mock_track_b_for_scenario(scenario: str, rule_id: str = "MC-PAR-001"):
         "hard_case": (True, 0.90, "Logos have reasonable spacing."),
     }
 
-    # Dominance-focused mocks (Barclays co-brand)
     dominance_map = {
         "barclays_cobrand": (True, 0.94, "Barclays logo is clearly larger and in prominent position."),
     }
@@ -94,20 +169,15 @@ def mock_track_b_for_scenario(scenario: str, rule_id: str = "MC-PAR-001"):
         entity_map = parity_map
 
     semantic_pass, confidence, reasoning = entity_map.get(scenario, (False, 0.80, "Unknown scenario — default mock."))
-
-    mock = MOCK_TRACK_A_SCENARIOS.get(scenario)
-    entities = list(mock.entities) if mock else []
-    return TrackBOutput(
-        rule_id=rule_id,
-        entities=entities,
-        semantic_pass=semantic_pass,
-        confidence_score=confidence,
-        reasoning_trace=reasoning,
-    )
+    return {
+        "semantic_pass": semantic_pass,
+        "confidence_score": confidence,
+        "reasoning_trace": reasoning,
+    }
 
 
 # ============================================================================
-# Pipeline
+# Pipeline helpers
 # ============================================================================
 
 
@@ -123,7 +193,7 @@ def resolve_scenario(image_path: str | None, scenario: str | None) -> tuple[str,
         if not scenario:
             print(f"  Warning: image '{filename}' doesn't match a known scenario.")
             print(f"  Known images: {list(IMAGE_TO_SCENARIO.keys())}")
-            print("  Using 'hard_case' as default scenario for Track A mock bboxes.")
+            print("  Using 'hard_case' as default scenario for mock bboxes.")
             scenario = "hard_case"
         return scenario, image_path
 
@@ -165,11 +235,10 @@ def _build_escalated_assessment(
     asset_id: str,
     reason: str,
 ) -> AssessmentOutput:
-    """Build an ESCALATED AssessmentOutput when Track B fails to parse.
+    """Build an ESCALATED AssessmentOutput when Track B is unusable.
 
-    The LLM was consulted but returned unusable output — escalate to
-    human review rather than guessing. track_b is None because the
-    response could not be validated into a TrackBOutput.
+    Covers: VLM parse failure, missing semantic judgment, API error.
+    track_b is None because no valid semantic output was available.
     """
     return AssessmentOutput(
         review_id=_generate_review_id(),
@@ -179,9 +248,59 @@ def _build_escalated_assessment(
         final_result=Result.ESCALATED,
         track_a=_serialize_track_a(track_a),
         track_b=None,
-        arbitration_log=("Track B parse failure — escalated to human review"),
+        arbitration_log=f"Track B unusable: {reason} — escalated to human review",
         escalation_reasons=[f"Track B unusable: {reason}"],
     )
+
+
+def _build_perception_failure_report(
+    rule_ids: list[str],
+    asset_id: str,
+    reason: str,
+    collisions: list,
+    model_version: str,
+    store: LearningStore,
+) -> ComplianceReport:
+    """Build a ComplianceReport with all rules ESCALATED when perception fails.
+
+    No bboxes were returned, so track_a and track_b are both None.
+    Each rule gets its own ESCALATED assessment with a review ID for audit.
+    """
+    rule_results: list[AssessmentOutput] = []
+    for rule_id in rule_ids:
+        assessment = AssessmentOutput(
+            review_id=_generate_review_id(),
+            rule_id=rule_id,
+            asset_id=asset_id,
+            timestamp=_now(),
+            final_result=Result.ESCALATED,
+            track_a=None,
+            track_b=None,
+            arbitration_log="VLM perception failed — escalated to human review",
+            escalation_reasons=[f"Perception failure: {reason}"],
+        )
+        store.record_assessment(assessment)
+        rule_results.append(assessment)
+
+    overall = ComplianceReport.worst_case(
+        [a.final_result for a in rule_results],
+        collisions=collisions,
+    )
+    brand_results = ComplianceReport.group_by_brand(rule_results, RULE_CATALOG)
+    return ComplianceReport(
+        asset_id=asset_id,
+        timestamp=_now(),
+        rule_results=rule_results,
+        overall_result=overall,
+        brand_results=brand_results,
+        collisions=collisions,
+        model_version=model_version,
+    )
+
+
+# ============================================================================
+# Pipeline
+# ============================================================================
 
 
 def run_pipeline(
@@ -194,10 +313,10 @@ def run_pipeline(
     provider=None,
 ) -> ComplianceReport:
     """
-    Execute the full dual-track pipeline for one scenario across all rules.
+    Execute the VLM-first pipeline for one image across all active rules.
 
-    If Track A returns FAIL for a rule, Track B is skipped entirely —
-    no mock, no API call. Math is authoritative.
+    Flow: perceive() → _perceived_to_detected → evaluate_track_a →
+          judgment extraction → arbitrate. Same path for dry-run and live.
     """
     if store is None:
         store = LearningStore()
@@ -208,48 +327,70 @@ def run_pipeline(
     catalog_raw = _load_yaml()
     collisions = detect_collisions(catalog_raw, active_rules=rule_ids)
 
-    mock = MOCK_TRACK_A_SCENARIOS.get(scenario)
-    if mock is None:
-        raise ValueError(f"No mock data for scenario: {scenario}")
-    entities = mock.entities
     asset_id = f"pipeline-{scenario}"
 
-    # Still run Track A/B even with collisions — gather visual evidence
-    rule_results = []
+    # --- VLM-first perception (single call per image) ---
+    if dry_run:
+        perception = _build_mock_perception(scenario, rule_ids)
+    elif provider is not None:
+        active_rules_dict = {rid: RULE_CATALOG[rid] for rid in rule_ids}
+        try:
+            perception = perceive(image_path, active_rules_dict, provider)
+        except (ValueError, VLMError) as e:
+            # Perception failed entirely — escalate all rules (safety constraint 1)
+            return _build_perception_failure_report(rule_ids, asset_id, str(e), collisions, model_version, store)
+    else:
+        raise ValueError("Live mode requires a provider. Use --dry-run for mock mode.")
+
+    entities = _perceived_to_detected(perception.entities)
+
+    # --- Per-rule evaluation ---
+    rule_results: list[AssessmentOutput] = []
     for rule_id in rule_ids:
-        # --- Track A: Deterministic ---
         rule_config = RULE_CATALOG[rule_id]
+
+        # Track A: Deterministic (bbox-agnostic — same code for mock or VLM bboxes)
         track_a = evaluate_track_a(
             list(entities),
             rule_id=rule_id,
             rule_config=rule_config,
         )
 
-        # --- Short-circuit: Track A FAIL skips Track B entirely ---
+        # --- Short-circuit: Track A FAIL skips Track B entirely (ADR-0001) ---
         if track_a.result == Result.FAIL:
             assessment = _build_short_circuit_assessment(track_a, asset_id)
             store.record_assessment(assessment)
             rule_results.append(assessment)
             continue
 
-        # --- Track B: Semantic (only when Track A passed) ---
-        try:
-            if dry_run:
-                track_b = mock_track_b_for_scenario(scenario, rule_id=rule_id)
-            elif provider is not None:
-                # Provider-routed path (TODO-011): any VLM backend
-                prompt = _build_prompt(image_path, rule_id)
-                raw_text = provider.analyze(image_path, prompt)
-                track_b = parse_track_b_response(raw_text, rule_id)
-            else:
-                # Backward-compat path: default Claude via call_live_track_b
-                track_b = call_live_track_b(image_path, rule_id=rule_id)
-        except (ValueError, VLMError) as e:
-            # LLM returned junk or API failed — escalate, don't guess
-            assessment = _build_escalated_assessment(track_a, asset_id, str(e))
+        # --- Semantic judgment extraction ---
+        # Only rules with semantic_spec need a judgment; deterministic-only
+        # rules would have been fully resolved by Track A above.
+        if "semantic_spec" not in rule_config:
+            # Pure deterministic rule: Track A PASS is authoritative
+            assessment = AssessmentOutput(
+                review_id=_generate_review_id(),
+                rule_id=rule_id,
+                asset_id=asset_id,
+                timestamp=_now(),
+                final_result=Result.PASS,
+                track_a=_serialize_track_a(track_a),
+                track_b=None,
+                arbitration_log="Deterministic-only rule — Track A PASS is authoritative",
+            )
             store.record_assessment(assessment)
             rule_results.append(assessment)
             continue
+
+        judgment = perception.rule_judgments.get(rule_id)
+        if judgment is None:
+            # VLM returned no judgment for a semantic rule → ESCALATED (safety constraint 1)
+            assessment = _build_escalated_assessment(track_a, asset_id, f"VLM returned no judgment for {rule_id}")
+            store.record_assessment(assessment)
+            rule_results.append(assessment)
+            continue
+
+        track_b = _judgment_to_track_b(judgment, entities)
 
         # --- Arbitrator ---
         assessment = arbitrate(
@@ -309,7 +450,7 @@ Examples:
     parser.add_argument(
         "--dry-run",
         action="store_true",
-        help="Skip the Claude API call; use mock Track B output instead",
+        help="Skip the VLM API call; use mock perception output instead",
     )
     parser.add_argument(
         "--cobrand",
@@ -358,7 +499,7 @@ Examples:
     print("=" * 70)
     print("BRAND ARBITER — Dual-Track Brand Compliance Engine")
     print(f"Provider: {args.provider} ({model_version})")
-    print(f"Mode: {'DRY RUN (mock Track B)' if args.dry_run else 'LIVE'}")
+    print(f"Mode: {'DRY RUN (mock perception)' if args.dry_run else 'LIVE (VLM-first)'}")
     print("=" * 70)
 
     store = LearningStore()
