@@ -146,6 +146,22 @@ cd src && python main.py --image ../path/to/your/image.png
 cd src && python main.py --image ../path/to/your/image.png --provider gemini
 ```
 
+### Test images
+
+The results below use `test_assets/*.png` — synthetic images created early in
+development with hand-drawn logos. They have no formal ground truth bounding
+boxes; the "mock" column reflects hardcoded values from `MOCK_TRACK_A_SCENARIOS`.
+
+A separate **golden dataset** exists at `test_assets/golden/` (11 controlled
+images with `ground_truth.yaml` specifying exact bboxes, area ratios, and
+expected verdicts). That dataset is designed for formal VLM benchmarking
+(TODO-013) and will replace these ad-hoc images as the primary evaluation set.
+
+When adapting Brand Arbiter for a different brand or company, you would:
+1. Replace images in `test_assets/golden/` with real marketing assets
+2. Update `ground_truth.yaml` with manually verified bounding boxes
+3. Run `python main.py --image <your-image>` to compare VLM output against ground truth
+
 ### Live results vs mocks
 
 Tested 3 scenarios × 2 providers (6 live VLM calls) on 2026-03-28.
