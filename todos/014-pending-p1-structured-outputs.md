@@ -1,5 +1,5 @@
 ---
-status: pending
+status: completed
 priority: p1
 issue_id: "014"
 tags: [vlm, structured-outputs, claude, gemini, reliability]
@@ -14,12 +14,12 @@ VLM responses are currently parsed with custom code and error handling. Both Cla
 
 ## Acceptance Criteria
 
-- [ ] Claude provider uses `strict: true` with JSON schema definition
-- [ ] Gemini provider uses `response_schema` with equivalent schema
-- [ ] Both providers enforce the domain schema from TODO-012 at API level (`strict: true` / `response_schema`)
-- [ ] Custom parsing in `live_track_b.py` simplified (schema enforcement at API level)
-- [ ] ADR-0002 (Boolean polarity) remains in prompts as best practice
-- [ ] Tests verify schema compliance for both providers (mock mode)
+- [x] Claude provider uses tool-use with JSON schema definition (tool_choice forced)
+- [x] Gemini provider uses `response_json_schema` with equivalent schema
+- [x] Both providers enforce the domain schema from TODO-012 at API level (PERCEPTION_JSON_SCHEMA)
+- [x] Custom parsing in `live_track_b.py` simplified (schema enforcement at API level)
+- [x] ADR-0002 (Boolean polarity) remains in prompts as best practice
+- [x] Tests verify schema compliance for both providers (mock mode)
 
 ## Notes
 

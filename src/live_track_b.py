@@ -386,17 +386,19 @@ def call_live_track_b(
     Parses the response through strict schema validation into a TrackBOutput.
 
     Delegates to ClaudeProvider for the API call (TODO-011 refactor).
+    Schema enforcement at API level (TODO-014); parse_track_b_response()
+    remains as the validation firewall for all responses.
     Raises ValueError if the LLM response fails schema validation.
     Raises VLMError if the API call itself fails.
     """
-    from vlm_provider import ClaudeProvider
+    from vlm_provider import PERCEPTION_JSON_SCHEMA, ClaudeProvider
 
     provider = ClaudeProvider(model=model)
     prompt = _build_prompt(image_path, rule_id)
 
     print(f"  Calling Claude ({model}) with image: {Path(image_path).name}")
 
-    raw_text = provider.analyze(image_path, prompt)
+    raw_text = provider.analyze(image_path, prompt, schema=PERCEPTION_JSON_SCHEMA)
     return parse_track_b_response(raw_text, rule_id)
 
 
