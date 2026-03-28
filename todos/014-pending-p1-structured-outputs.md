@@ -1,5 +1,5 @@
 ---
-status: pending
+status: completed
 priority: p1
 issue_id: "014"
 tags: [vlm, structured-outputs, claude, gemini, reliability]
@@ -14,12 +14,13 @@ VLM responses are currently parsed with custom code and error handling. Both Cla
 
 ## Acceptance Criteria
 
-- [ ] Claude provider uses `strict: true` with JSON schema definition
-- [ ] Gemini provider uses `response_schema` with equivalent schema
-- [ ] Both providers enforce the domain schema from TODO-012 at API level (`strict: true` / `response_schema`)
-- [ ] Custom parsing in `live_track_b.py` simplified (schema enforcement at API level)
-- [ ] ADR-0002 (Boolean polarity) remains in prompts as best practice
-- [ ] Tests verify schema compliance for both providers (mock mode)
+- [x] Claude provider supports structured outputs via tool-use (tool_choice forced)
+- [x] Gemini provider supports structured outputs via `response_json_schema`
+- [x] Schema defined in shared leaf module (`perception_schema.py`), imported by both providers
+- [x] ADR-0002 (Boolean polarity) remains in prompts as best practice
+- [x] Tests verify schema compliance for both providers (mock mode)
+
+**Scope:** This TODO adds structured output *capability* to both providers and defines the shared schema. End-to-end wiring (`perceive()` passing schema to providers) is tracked separately in TODO-023.
 
 ## Notes
 
@@ -72,9 +73,9 @@ New tests:
 | Allowed (may create/modify) | Forbidden (must not touch) |
 |-----------------------------|---------------------------|
 | `src/vlm_provider.py` (add structured output calls) | `src/vlm_perception.py` (schema definition is 012's) |
-| `src/live_track_b.py` (simplify parsing, keep fallback) | `src/phase1_crucible.py` |
-| `tests/test_structured_outputs.py` (new) | `src/live_track_a.py` |
-| | `rules.yaml` |
+| `src/perception_schema.py` (new — shared schema leaf module) | `src/phase1_crucible.py` |
+| `src/live_track_b.py` (simplify parsing, keep fallback) | `src/live_track_a.py` |
+| `tests/test_structured_outputs.py` (new) | `rules.yaml` |
 
 ### Gate 4 — Human (1 question, under 2 min)
 

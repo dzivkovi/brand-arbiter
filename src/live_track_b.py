@@ -386,6 +386,8 @@ def call_live_track_b(
     Parses the response through strict schema validation into a TrackBOutput.
 
     Delegates to ClaudeProvider for the API call (TODO-011 refactor).
+    This legacy path uses per-rule prompts + per-rule parser — structured
+    output schema is NOT used here (it targets the unified perception path).
     Raises ValueError if the LLM response fails schema validation.
     Raises VLMError if the API call itself fails.
     """

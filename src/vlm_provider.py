@@ -1,13 +1,13 @@
 """
-VLM Provider Abstraction (TODO-011)
-====================================
+VLM Provider Abstraction (TODO-011, TODO-014)
+==============================================
 Minimal provider interface for swapping between VLM backends.
 
 Each provider is a transport layer: image + prompt in, raw text out.
 Domain validation stays in `parse_track_b_response()` (the parsing firewall).
 
-The `schema` parameter is a forward-compatible hook for TODO-014
-(structured outputs). Implementations ignore it until then.
+When a JSON schema is passed, providers use API-level structured outputs
+(ADR-0007): Claude via tool-use, Gemini via response_json_schema.
 
 Author: Daniel Zivkovic, Magma Inc.
 Date: March 27, 2026
@@ -16,12 +16,24 @@ Date: March 27, 2026
 from __future__ import annotations
 
 import base64
+import json
 from pathlib import Path
 from typing import Protocol
 
 import anthropic
 from google import genai
+from google.genai import types as genai_types
 from PIL import Image
+
+from perception_schema import PERCEPTION_JSON_SCHEMA
+
+# Re-export PERCEPTION_JSON_SCHEMA for backward compatibility with existing imports.
+# Source of truth: perception_schema.py (leaf module, no circular deps).
+__all__ = ["PERCEPTION_JSON_SCHEMA"]
+
+# Tool name used by ClaudeProvider for structured output enforcement
+_CLAUDE_TOOL_NAME = "perception_output"
+
 
 # ============================================================================
 # Provider-agnostic exception (C4 fix — no SDK-specific leaks)
@@ -105,33 +117,59 @@ class ClaudeProvider:
     def analyze(self, image_path: str | Path, prompt: str, schema: dict | None = None) -> str:
         """Send image + prompt to Claude, return raw response text.
 
-        schema is accepted for forward compatibility (TODO-014) but ignored.
+        When schema is provided, enforces structured output via tool-use:
+        defines a tool with input_schema=schema and forces the model to call it.
+        The tool's input JSON is returned as the raw text response.
         """
         try:
             client = anthropic.Anthropic(api_key=self._api_key) if self._api_key else anthropic.Anthropic()
             image_data, media_type = _encode_image_base64(image_path)
 
-            response = client.messages.create(
-                model=self._model,
-                max_tokens=2000,
-                messages=[
-                    {
-                        "role": "user",
-                        "content": [
-                            {
-                                "type": "image",
-                                "source": {
-                                    "type": "base64",
-                                    "media_type": media_type,
-                                    "data": image_data,
-                                },
+            messages = [
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "image",
+                            "source": {
+                                "type": "base64",
+                                "media_type": media_type,
+                                "data": image_data,
                             },
-                            {"type": "text", "text": prompt},
-                        ],
-                    }
-                ],
-            )
-            return response.content[0].text.strip()
+                        },
+                        {"type": "text", "text": prompt},
+                    ],
+                }
+            ]
+
+            if schema is not None:
+                # Structured output via tool-use (ADR-0007)
+                response = client.messages.create(
+                    model=self._model,
+                    max_tokens=4096,
+                    messages=messages,
+                    tools=[
+                        {
+                            "name": _CLAUDE_TOOL_NAME,
+                            "description": "Return the brand compliance perception analysis as structured JSON.",
+                            "input_schema": schema,
+                        }
+                    ],
+                    tool_choice={"type": "tool", "name": _CLAUDE_TOOL_NAME},
+                )
+                # Extract the tool-use block's input as JSON text
+                for block in response.content:
+                    if block.type == "tool_use" and block.name == _CLAUDE_TOOL_NAME:
+                        return json.dumps(block.input)
+                # Fallback: no tool_use block found — return raw text for parser fallback
+                return response.content[0].text.strip() if response.content else ""
+            else:
+                response = client.messages.create(
+                    model=self._model,
+                    max_tokens=2000,
+                    messages=messages,
+                )
+                return response.content[0].text.strip()
         except FileNotFoundError:
             raise
         except Exception as e:
@@ -165,14 +203,22 @@ class GeminiProvider:
     def analyze(self, image_path: str | Path, prompt: str, schema: dict | None = None) -> str:
         """Send image + prompt to Gemini, return raw response text.
 
-        schema is accepted for forward compatibility (TODO-014) but ignored.
+        When schema is provided, enforces structured output via
+        response_json_schema + response_mime_type (ADR-0007).
         """
         try:
             client = genai.Client(api_key=self._api_key) if self._api_key else genai.Client()
+            config: dict | genai_types.GenerateContentConfig | None = None
+            if schema is not None:
+                config = genai_types.GenerateContentConfig(
+                    response_mime_type="application/json",
+                    response_json_schema=schema,
+                )
             with Image.open(image_path) as image:
                 response = client.models.generate_content(
                     model=self._model,
                     contents=[image, prompt],
+                    config=config,
                 )
             return response.text.strip()
         except FileNotFoundError:
