@@ -394,6 +394,52 @@ class TestParsePerceptionResponseRejects:
         with pytest.raises(ValueError, match="JSON object"):
             parse_perception_response("[1, 2, 3]")
 
+    def test_duplicate_rule_judgment_keys_raises(self):
+        """Duplicate rule_id keys in rule_judgments raises ValueError."""
+        # Manually construct JSON with duplicate key (json.dumps can't do this)
+        raw = (
+            '{"entities": [], "rule_judgments": {'
+            '"MC-PAR-001": {"semantic_pass": true, "confidence_score": 0.90}, '
+            '"MC-PAR-001": {"semantic_pass": false, "confidence_score": 0.80}'
+            "}}"
+        )
+        with pytest.raises(ValueError, match="Duplicate JSON key"):
+            parse_perception_response(raw)
+
+    def test_rubric_penalties_wrong_type_raises(self):
+        """rubric_penalties as a string instead of list[str] raises ValueError."""
+        raw = _valid_perception_response(
+            rule_judgments={
+                "MC-PAR-001": {
+                    "semantic_pass": True,
+                    "confidence_score": 0.95,
+                    "rubric_penalties": "oops not a list",
+                }
+            }
+        )
+        with pytest.raises(ValueError, match=r"rubric_penalties.*list"):
+            parse_perception_response(raw)
+
+    def test_rubric_penalties_non_string_items_raises(self):
+        """rubric_penalties with non-string items raises ValueError."""
+        raw = _valid_perception_response(
+            rule_judgments={
+                "MC-PAR-001": {
+                    "semantic_pass": True,
+                    "confidence_score": 0.95,
+                    "rubric_penalties": [123, 456],
+                }
+            }
+        )
+        with pytest.raises(ValueError, match=r"rubric_penalties.*list"):
+            parse_perception_response(raw)
+
+    def test_extracted_text_wrong_type_raises(self):
+        """extracted_text as a list instead of str raises ValueError."""
+        raw = _valid_perception_response(extracted_text=["not", "a", "string"])
+        with pytest.raises(ValueError, match=r"extracted_text.*str"):
+            parse_perception_response(raw)
+
 
 # ============================================================================
 # TestBuildUnifiedPrompt
@@ -455,6 +501,19 @@ class TestBuildUnifiedPrompt:
         assert "// true = adequate clear space" not in prompt
         # Should only have ONE output format section (the unified one)
         assert prompt.count("## OUTPUT FORMAT") == 1
+
+    def test_missing_criteria_raises(self):
+        """Semantic rule without evaluation criteria raises ValueError."""
+        # Fake rule with semantic_spec but no RULE_EVALUATION_CRITERIA entry
+        rules = {
+            "FAKE-SEM-999": {
+                "name": "Fake Semantic Rule",
+                "type": "semantic",
+                "semantic_spec": {"confidence_threshold": 0.85},
+            }
+        }
+        with pytest.raises(ValueError, match="no evaluation criteria"):
+            build_unified_prompt(rules)
 
 
 # ============================================================================

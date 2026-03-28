@@ -88,6 +88,20 @@ class PerceptionOutput:
 # ============================================================================
 
 
+def _reject_duplicate_keys(pairs: list[tuple[str, object]]) -> dict:
+    """JSON object_pairs_hook that raises on duplicate keys.
+
+    Python's json.loads silently keeps the last value for duplicate keys.
+    This hook sees all pairs before collapsing, so we can detect conflicts.
+    """
+    result: dict[str, object] = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError(f"Duplicate JSON key: '{key}'")
+        result[key] = value
+    return result
+
+
 def parse_perception_response(raw_text: str) -> PerceptionOutput:
     """Parse raw VLM text into PerceptionOutput with strict schema validation.
 
@@ -105,9 +119,9 @@ def parse_perception_response(raw_text: str) -> PerceptionOutput:
         cleaned = cleaned[:-3]
     cleaned = cleaned.strip()
 
-    # Parse JSON
+    # Parse JSON (with duplicate key detection — json.loads silently keeps last)
     try:
-        data = json.loads(cleaned)
+        data = json.loads(cleaned, object_pairs_hook=_reject_duplicate_keys)
     except json.JSONDecodeError as e:
         raise ValueError(f"VLM did not return valid JSON: {e}") from e
 
@@ -188,18 +202,34 @@ def parse_perception_response(raw_text: str) -> PerceptionOutput:
                 f"[{_MIN_CONFIDENCE}, {_MAX_CONFIDENCE}]"
             )
 
+        # Validate optional fields have correct types
+        reasoning_trace = jdata.get("reasoning_trace", "")
+        if not isinstance(reasoning_trace, str):
+            raise ValueError(
+                f"Judgment for '{rule_id}' 'reasoning_trace' must be str, got {type(reasoning_trace).__name__}"
+            )
+
+        rubric_penalties = jdata.get("rubric_penalties", [])
+        if not isinstance(rubric_penalties, list) or not all(isinstance(p, str) for p in rubric_penalties):
+            raise ValueError(f"Judgment for '{rule_id}' 'rubric_penalties' must be list[str], got {rubric_penalties!r}")
+
         rule_judgments[rule_id] = RuleJudgment(
             rule_id=rule_id,
             semantic_pass=jdata["semantic_pass"],
             confidence_score=float(score),
-            reasoning_trace=jdata.get("reasoning_trace", ""),
-            rubric_penalties=jdata.get("rubric_penalties", []),
+            reasoning_trace=reasoning_trace,
+            rubric_penalties=rubric_penalties,
         )
+
+    # Validate extracted_text type
+    extracted_text = data.get("extracted_text", "") or ""
+    if not isinstance(extracted_text, str):
+        raise ValueError(f"'extracted_text' must be str, got {type(extracted_text).__name__}")
 
     return PerceptionOutput(
         entities=entities,
         rule_judgments=rule_judgments,
-        extracted_text=data.get("extracted_text", "") or "",
+        extracted_text=extracted_text,
     )
 
 
@@ -225,13 +255,17 @@ def build_unified_prompt(active_rules: dict[str, dict]) -> str:
     # Filter to rules with semantic_spec (only these get VLM judgments)
     semantic_rule_ids = [rule_id for rule_id, config in active_rules.items() if "semantic_spec" in config]
 
-    # Build per-rule evaluation sections
+    # Build per-rule evaluation sections (fail fast on missing criteria)
     rule_sections: list[str] = []
     for rule_id in semantic_rule_ids:
         criteria = RULE_EVALUATION_CRITERIA.get(rule_id)
-        if criteria:
-            rule_name = active_rules[rule_id].get("name", rule_id)
-            rule_sections.append(f"### Rule: {rule_id} — {rule_name}\n{criteria}")
+        if criteria is None:
+            raise ValueError(
+                f"Semantic rule '{rule_id}' has no evaluation criteria in RULE_EVALUATION_CRITERIA. "
+                f"Add criteria to live_track_b.py before using this rule."
+            )
+        rule_name = active_rules[rule_id].get("name", rule_id)
+        rule_sections.append(f"### Rule: {rule_id} — {rule_name}\n{criteria}")
 
     rules_block = "\n\n".join(rule_sections) if rule_sections else "No semantic rules to evaluate."
     rule_ids_json = json.dumps(semantic_rule_ids)
