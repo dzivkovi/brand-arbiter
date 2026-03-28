@@ -221,8 +221,10 @@ def parse_perception_response(raw_text: str) -> PerceptionOutput:
             rubric_penalties=rubric_penalties,
         )
 
-    # Validate extracted_text type
-    extracted_text = data.get("extracted_text", "") or ""
+    # Validate extracted_text type — missing key or None → "", all other non-str → reject
+    extracted_text = data.get("extracted_text", "")
+    if extracted_text is None:
+        extracted_text = ""
     if not isinstance(extracted_text, str):
         raise ValueError(f"'extracted_text' must be str, got {type(extracted_text).__name__}")
 

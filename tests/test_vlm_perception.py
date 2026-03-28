@@ -440,6 +440,24 @@ class TestParsePerceptionResponseRejects:
         with pytest.raises(ValueError, match=r"extracted_text.*str"):
             parse_perception_response(raw)
 
+    def test_extracted_text_zero_raises(self):
+        """extracted_text as integer 0 (falsy non-string) raises ValueError."""
+        raw = _valid_perception_response(extracted_text=0)
+        with pytest.raises(ValueError, match=r"extracted_text.*str"):
+            parse_perception_response(raw)
+
+    def test_extracted_text_false_raises(self):
+        """extracted_text as boolean False (falsy non-string) raises ValueError."""
+        raw = _valid_perception_response(extracted_text=False)
+        with pytest.raises(ValueError, match=r"extracted_text.*str"):
+            parse_perception_response(raw)
+
+    def test_extracted_text_null_normalizes_to_empty(self):
+        """extracted_text as null normalizes to empty string (intentional)."""
+        raw = _valid_perception_response(extracted_text=None)
+        result = parse_perception_response(raw)
+        assert result.extracted_text == ""
+
 
 # ============================================================================
 # TestBuildUnifiedPrompt
