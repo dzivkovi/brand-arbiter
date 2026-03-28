@@ -1,0 +1,220 @@
+- file: PASS-parity-equal.png
+  rule: MC-PAR-001
+  verdict: PASS
+  difficulty: easy
+  reasoning: MC bbox 160x100 area=16000, Visa 160x100 area=16000. Area ratio 1.0000.
+    Equal bbox area.
+  area_ratio: 1.0
+  entities:
+    mastercard:
+    - 200
+    - 350
+    - 360
+    - 450
+    visa:
+    - 440
+    - 350
+    - 600
+    - 450
+    amex:
+    - 680
+    - 350
+    - 840
+    - 450
+- file: FAIL-parity-mc-small.png
+  rule: MC-PAR-001
+  verdict: FAIL
+  difficulty: easy
+  reasoning: MC bbox 96x60 area=5760, Visa 200x120 area=24000. Area ratio 0.2400 <<
+    0.95 threshold.
+  area_ratio: 0.24
+  entities:
+    mastercard:
+    - 200
+    - 380
+    - 296
+    - 440
+    visa:
+    - 500
+    - 350
+    - 700
+    - 470
+- file: FAIL-parity-subtle.png
+  rule: MC-PAR-001
+  verdict: FAIL
+  difficulty: hard
+  reasoning: "MC bbox 147x92 area=13524, Visa 160x100 area=16000. Area ratio 0.8452\
+    \ < 0.95 threshold. Visually subtle \u2014 MC is only 8px shorter \u2014 but bbox\
+    \ area difference is significant."
+  area_ratio: 0.8452
+  entities:
+    mastercard:
+    - 200
+    - 354
+    - 347
+    - 446
+    visa:
+    - 500
+    - 350
+    - 660
+    - 450
+- file: PASS-clearspace-adequate.png
+  rule: MC-CLR-002
+  verdict: PASS
+  difficulty: easy
+  reasoning: MC right edge at x=642, Visa left edge at x=850. Gap=208px, MC width=192px.
+    Ratio 1.0833 >> 0.25 threshold.
+  clearspace_ratio: 1.0833
+  entities:
+    mastercard:
+    - 450
+    - 300
+    - 642
+    - 420
+    visa:
+    - 850
+    - 320
+    - 990
+    - 400
+- file: FAIL-clearspace-crowded.png
+  rule: MC-CLR-002
+  verdict: FAIL
+  difficulty: easy
+  reasoning: MC right edge at x=460, Visa left edge at x=468. Gap=8px, MC width=160px.
+    Ratio 0.0500 << 0.25 threshold. Also crowded by promo text from the left.
+  clearspace_ratio: 0.05
+  entities:
+    mastercard:
+    - 300
+    - 350
+    - 460
+    - 450
+    visa:
+    - 468
+    - 350
+    - 608
+    - 450
+- file: PASS-dominance-bank-larger.png
+  rule: BC-DOM-001
+  verdict: PASS
+  difficulty: easy
+  reasoning: Barclays area=54000, MC area=10240. Dominance ratio 5.27x. Bank clearly
+    dominant.
+  dominance_ratio: 5.27
+  entities:
+    barclays:
+    - 200
+    - 280
+    - 560
+    - 430
+    mastercard:
+    - 700
+    - 330
+    - 828
+    - 410
+- file: FAIL-dominance-mc-equal.png
+  rule: BC-DOM-001
+  verdict: FAIL
+  difficulty: medium
+  reasoning: Barclays area=20000, MC area=16000. Dominance ratio 1.25x. Network mark
+    too prominent for co-brand.
+  dominance_ratio: 1.25
+  entities:
+    barclays:
+    - 200
+    - 320
+    - 400
+    - 420
+    mastercard:
+    - 500
+    - 320
+    - 660
+    - 420
+- file: AMBIGUOUS-parity-threshold.png
+  rule: MC-PAR-001
+  verdict: PASS
+  difficulty: hard
+  reasoning: "MC bbox 156x98 area=15288, Visa 160x100 area=16000. Area ratio 0.9555,\
+    \ just above 0.95 threshold. Technically passes but borderline. VLMs may disagree\
+    \ \u2014 ESCALATED is acceptable."
+  area_ratio: 0.9555
+  acceptable_verdicts:
+  - PASS
+  - ESCALATED
+  entities:
+    mastercard:
+    - 300
+    - 351
+    - 456
+    - 449
+    visa:
+    - 560
+    - 350
+    - 720
+    - 450
+- file: FAIL-parity-color-treatment.png
+  rule: MC-PAR-001
+  verdict: FAIL
+  difficulty: hard
+  reasoning: MC and Visa have equal bbox area (ratio 1.0000) but MC is displayed in
+    grayscale while Visa is full color. This is a parity violation via color treatment,
+    not size. Track A would say PASS (equal area), Track B should say FAIL (unequal
+    prominence). Tests semantic judgment beyond pixel math.
+  area_ratio: 1.0
+  note: This tests Track B (semantic) vs Track A (deterministic) disagreement. A VLM
+    that only counts pixels would miss this.
+  entities:
+    mastercard:
+    - 200
+    - 350
+    - 360
+    - 450
+    visa:
+    - 500
+    - 350
+    - 660
+    - 450
+- file: AMBIGUOUS-clearspace-borderline.png
+  rule: MC-CLR-002
+  verdict: PASS
+  difficulty: hard
+  reasoning: "MC right edge at x=460, Visa left at x=503. Gap=43px, MC width=160px.\
+    \ Ratio 0.2687, just above 0.25 threshold. Borderline \u2014 ESCALATED is acceptable."
+  clearspace_ratio: 0.2687
+  acceptable_verdicts:
+  - PASS
+  - ESCALATED
+  entities:
+    mastercard:
+    - 300
+    - 350
+    - 460
+    - 450
+    visa:
+    - 503
+    - 350
+    - 643
+    - 450
+- file: PASS-parity-vertical.png
+  rule: MC-PAR-001
+  verdict: PASS
+  difficulty: medium
+  reasoning: Vertical stacking layout. MC area=10240, Visa area=10240. Ratio 1.0000.
+    Tests whether VLM handles non-horizontal logo arrangement.
+  area_ratio: 1.0
+  entities:
+    mastercard:
+    - 500
+    - 200
+    - 628
+    - 280
+    visa:
+    - 500
+    - 330
+    - 628
+    - 410
+    amex:
+    - 500
+    - 460
+    - 628
+    - 540
